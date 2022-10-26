@@ -1,24 +1,20 @@
-import psycopg2
-from psycopg2 import Error
 import os
-import scipy.io as sio
 import uuid
+import psycopg2
+import scipy.io as sio
+from psycopg2 import Error
 
 
 class Controller:
     """
-    dasdasd
-    sadsadsa
-    d
-    sa
-    das
-    dsad
+    Через класс происходит управление базой данных:
+        -создание таблиц
+        -заполнение таблиц
     """
     __connection = None
-    # __path_database = None
-    __path_database = 'D:\Projects\mat_to_csv\mat files'
+    __path_database = None
 
-    def connect(self, database = 'tpu', password = '2325070307', user = "postgres", host = "127.0.0.1", port = "5432"):
+    def connect(self, database = '', password = '', user = "postgres", host = "127.0.0.1", port = "5432"):
         """Метод подключается от PostgreSQL"""
         try:
             self.__connection = psycopg2.connect(user=user,
@@ -45,7 +41,7 @@ class Controller:
         frequency = int(mat_file['Sample_frequency'][0][0])
         period = float(mat_file['Sample_period'][0][0])
         speed = float(mat_file['Uh_AverageWindSpeed'][0])
-        x = [float('%.5f' % i) for i in mat_file["Location_of_measured_points"][0]]
+        x_old = [float('%.5f' % i) for i in mat_file["Location_of_measured_points"][0]]
         z = [float('%.5f' % i) for i in mat_file["Location_of_measured_points"][1]]
         sensor_number = [int(i) for i in mat_file["Location_of_measured_points"][2]]
         face_number = [int(i) for i in mat_file["Location_of_measured_points"][3]]
@@ -55,21 +51,21 @@ class Controller:
         pressure_coefficients = pressure_coefficients.astype('int32')
         pressure_coefficients = pressure_coefficients.tolist()
         count_sensors = sensor_number[-1]
-        return (alpha,
-                model_name,
-                breadth,
-                depth,
-                height,
-                frequency,
-                period,
-                speed,
-                x,
-                z,
-                sensor_number,
-                face_number,
-                angle,
-                pressure_coefficients,
-                count_sensors)
+        return {'alpha': alpha,
+                'model_name': model_name,
+                'breadth': breadth,
+                'depth': depth,
+                'height': height,
+                'frequency': frequency,
+                'period': period,
+                'speed': speed,
+                'x_old': x_old,
+                'z': z,
+                'sensor_number': sensor_number,
+                'face_number': face_number,
+                'angle': angle,
+                'pressure_coefficients': pressure_coefficients,
+                'count_sensors': count_sensors}
 
     @staticmethod
     def converter_coordinates(x_old, depth, breadth, face_number, count_sensors):
@@ -92,41 +88,61 @@ class Controller:
 
         return x, y
 
-    def fill_models_alpha(self, alpha, model_name, angle, pressure_coefficients):
+    def fill_models_alpha(self, parameters):
+        """Добавляет запись в таблицу models_alpha_<alpha>"""
+        alpha = parameters['alpha']
+        model_name = parameters['model_name']
+        angle = parameters['angle']
+        pressure_coefficients = parameters['pressure_coefficients']
         flag = 0
         try:
             name = f"T{model_name}_{alpha}_{angle:03d}_1.mat"
-            command = f"""
-                       select model_id 
-                       from experiments_alpha_{alpha}
-                       where model_name = {model_name}
-                   """
-            self.cursor.execute(command)
+            if alpha == '6':
+                self.cursor.execute("""
+                           select model_id 
+                           from experiments_alpha_6
+                           where model_name = (%s)
+                       """, (model_name,))
+            elif alpha == '4':
+                self.cursor.execute("""
+                           select model_id 
+                           from experiments_alpha_4
+                           where model_name = (%s)
+                       """, (model_name,))
+
             model_id = self.cursor.fetchall()[0][0]
 
-            command = f"""
-                       select model_id 
-                       from models_alpha_{alpha}
-                       where model_id = {model_id} and angle = {angle}
-                               """
-            self.cursor.execute(command)
+            if alpha == '6':
+                self.cursor.execute("""
+                                       select model_id 
+                                       from models_alpha_6
+                                       where model_id = (%s) and angle = (%s)
+                                        """, (model_id, angle))
+            elif alpha == '4':
+                self.cursor.execute("""
+                           select model_id 
+                           from models_alpha_4
+                           where model_id = (%s) and angle = (%s)
+                            """, (model_id, angle))
 
             if self.cursor.fetchall():
                 print(f'{name} была ранее добавлена в models_alpha_{alpha}')
                 flag = 1
 
             if flag == 0:
-                norm_pressure_coefficients = ''
-                for step_time in pressure_coefficients:
-                    norm_pressure_coefficients += f'{step_time},'.replace('[', '{').replace(']', '}')
-                norm_pressure_coefficients = norm_pressure_coefficients.rstrip(',')
                 try:
-                    command = f"""
-                               insert into models_alpha_{alpha} (angle, pressure_coefficients)
-                               values
-                               ({angle}, array[{norm_pressure_coefficients}])
-                           """
-                    self.cursor.execute(command)
+                    if alpha == '6':
+                        self.cursor.execute("""
+                                   insert into models_alpha_6 (angle, pressure_coefficients)
+                                   values
+                                   ((%s), (%s))
+                               """, (angle, pressure_coefficients))
+                    elif alpha == '4':
+                        self.cursor.execute("""
+                                   insert into models_alpha_4 (angle, pressure_coefficients)
+                                   values
+                                   ((%s), (%s))
+                               """, (angle, pressure_coefficients))
                     self.__connection.commit()
                     print(f'{name} добавлена в models_alpha_{alpha}')
                 except (Exception, Error) as error:
@@ -134,29 +150,34 @@ class Controller:
         except (Exception, Error) as error:
             print(f"Ошибка при работе с PostgreSQL, файл {model_name}", error)
 
-    def fill_experiments_alpha(self,
-                               alpha,
-                               angle,
-                               model_name,
-                               breadth,
-                               depth,
-                               height,
-                               frequency,
-                               period,
-                               speed,
-                               x_old,
-                               z,
-                               sensor_number,
-                               face_number,
-                               count_sensors):
+    def fill_experiments_alpha(self, parameters):
+        """Добавляет запись в таблицу experiments_alpha_<alpha>"""
+        alpha = parameters['alpha']
+        angle = parameters['angle']
+        model_name = parameters['model_name']
+        breadth = parameters['breadth']
+        depth = parameters['depth']
+        height = parameters['height']
+        frequency = parameters['frequency']
+        period = parameters['period']
+        speed = parameters['speed']
+        x_old = parameters['x_old']
+        z = parameters['z']
+        sensor_number = parameters['sensor_number']
+        face_number = parameters['face_number']
+        count_sensors = parameters['count_sensors']
         flag = 0  # флаг для проверки наличия записи в бд
         x, y = self.converter_coordinates(x_old, depth, breadth, face_number, count_sensors)
         name = f"T{model_name}_{alpha}_{angle:03d}_1.mat"
         try:
-            command = f"""
-                       select * from experiments_alpha_{alpha}
-                   """
-            self.cursor.execute(command)
+            if alpha == '6':
+                self.cursor.execute("""
+                           select * from experiments_alpha_6
+                       """)
+            elif alpha == '4':
+                self.cursor.execute("""
+                           select * from experiments_alpha_4
+                       """)
             table = self.cursor.fetchall()
             for row in table:
                 if row[1] == model_name:
@@ -165,36 +186,42 @@ class Controller:
                     break
             if flag == 0:
                 try:
-                    command = f"""
-                               insert into experiments_alpha_{alpha} (model_name,
-                                                                breadth,
-                                                                depth,
-                                                                height,
-                                                                sample_frequency,
-                                                                sample_period,
-                                                                uh_AverageWindSpeed,
-                                                                x_coordinates,
-                                                                y_coordinates,
-                                                                z_coordinates,
-                                                                sensor_number,
-                                                                face_number)
-                               values
-                               (
-                               {model_name},
-                               {breadth},
-                               {depth},
-                               {height},
-                               {frequency},
-                               {period},
-                               {speed},
-                               array{x},
-                               array{y},
-                               array{z},
-                               array{sensor_number},
-                               array{face_number}
-                               )
-                           """
-                    self.cursor.execute(command)
+                    if alpha == '6':
+                        self.cursor.execute("""
+                                   insert into experiments_alpha_6 (model_name,
+                                                                    breadth,
+                                                                    depth,
+                                                                    height,
+                                                                    sample_frequency,
+                                                                    sample_period,
+                                                                    uh_AverageWindSpeed,
+                                                                    x_coordinates,
+                                                                    y_coordinates,
+                                                                    z_coordinates,
+                                                                    sensor_number,
+                                                                    face_number)
+                                   values((%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s))
+                               """, (
+                            model_name, breadth, depth, height, frequency, period, speed, x, y, z, sensor_number,
+                            face_number))
+                    elif alpha == '4':
+                        self.cursor.execute(f"""
+                                   insert into experiments_alpha_4 (model_name,
+                                                                    breadth,
+                                                                    depth,
+                                                                    height,
+                                                                    sample_frequency,
+                                                                    sample_period,
+                                                                    uh_AverageWindSpeed,
+                                                                    x_coordinates,
+                                                                    y_coordinates,
+                                                                    z_coordinates,
+                                                                    sensor_number,
+                                                                    face_number)
+                                   values((%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s),(%s))
+                               """, (
+                            model_name, breadth, depth, height, frequency, period, speed, x, y, z, sensor_number,
+                            face_number))
                     self.__connection.commit()
                     print(f'{name} добавлена в experiments_alpha_{alpha}')
                 except (Exception, Error) as error:
@@ -210,37 +237,9 @@ class Controller:
         """
 
         if path:
-            (alpha,
-             model_name,
-             breadth,
-             depth,
-             height,
-             frequency,
-             period,
-             speed,
-             x_old,
-             z,
-             sensor_number,
-             face_number,
-             angle,
-             pressure_coefficients,
-             count_sensors) = self.read_mat(path)
-            self.fill_experiments_alpha(alpha,
-                                        angle,
-                                        model_name,
-                                        breadth,
-                                        depth,
-                                        height,
-                                        frequency,
-                                        period,
-                                        speed,
-                                        x_old,
-                                        z,
-                                        sensor_number,
-                                        face_number,
-                                        count_sensors)
-
-            self.fill_models_alpha(alpha, model_name, angle, pressure_coefficients)
+            parameters = self.read_mat(path)
+            self.fill_experiments_alpha(parameters)
+            self.fill_models_alpha(parameters)
 
         else:
             self.check_path()
@@ -303,7 +302,8 @@ class Controller:
                         angle smallint not null,
                         pressure_coefficients smallint[][] not null,
                         
-                        constraint FK{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) references experiments_alpha_{alpha}(model_id)
+                        constraint FK{str(uuid.uuid4()).replace('-', '')}
+                         foreign key (model_id) references experiments_alpha_{alpha}(model_id)
                     );'''
                 self.cursor.execute(command)
                 self.__connection.commit()
@@ -320,8 +320,8 @@ class Controller:
 
 if __name__ == '__main__':
     control = Controller()
-    # control.read_mat('D:\Projects\mat_to_csv\mat files\Alpha 4\T111_4\T111_4_000_1.mat')
     control.connect()
     control.create_tables()
     control.fill_db()
     control.disconnect()
+   

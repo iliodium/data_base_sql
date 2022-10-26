@@ -1,7 +1,8 @@
-def a(**kwargs):
-    print(c+d)
 
-c=5
-d=11
-parameters = {'c':10,'d':11}
-a(c=5,d=11)
+
+def q(*args):
+    print(a, b, c)
+
+
+par = {'a': 1, 'b': 2, 'c': 3,'d':4}
+q(**par)
