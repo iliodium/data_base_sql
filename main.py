@@ -25,9 +25,9 @@ class Controller:
             self.cursor = self.__connection.cursor()
             print("Соединение с PostgreSQL открыто")
         except psycopg2.OperationalError:
-            print("Проверьте правильность веденных данных")
+            assert False, ("Проверьте правильность веденных данных")
         except Exception as error:
-            print(f"Ошибка - {error}")
+            assert False, (f"Ошибка - {error}")
 
     @staticmethod
     def read_mat(path):
@@ -248,6 +248,16 @@ class Controller:
                     for file in os.listdir(f"{self.__path_database}\\{alpha}\\{files}"):
                         self.fill_db(f"{self.__path_database}\\{alpha}\\{files}\\{file}")
 
+    def get_paths(self):
+        self.paths = []
+        self.check_path()
+        for alpha in os.listdir(self.__path_database):
+            for files in os.listdir(f'{self.__path_database}\\{alpha}'):
+                for file in os.listdir(f"{self.__path_database}\\{alpha}\\{files}"):
+                    self.paths.append(f"{self.__path_database}\\{alpha}\\{files}\\{file}")
+
+        return self.paths
+
     def check_path(self):
         """Метод проверяет наличие заданного пути"""
         if self.__path_database is None:
@@ -320,8 +330,18 @@ class Controller:
 
 if __name__ == '__main__':
     control = Controller()
-    control.connect()
+    control.connect(database='', password='')
     control.create_tables()
     control.fill_db()
+    paths = control.get_paths()
     control.disconnect()
-   
+    # import time
+    # users = dict()
+    # for i in range(1, 80):
+    #     users[f'user_{i}'] = Controller()
+    #     users[f'user_{i}'].connect(database='', password='')
+    #
+    #
+    #
+    # for i in range(1, 80):
+    #     users[f'user_{i}'].disconnect()
