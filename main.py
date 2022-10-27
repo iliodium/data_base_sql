@@ -12,7 +12,8 @@ class Controller:
         -заполнение таблиц
     """
     __connection = None
-    __path_database = None
+    # __path_database = None
+    __path_database = 'D:\Projects\mat_to_csv\mat files'
 
     def connect(self, database = '', password = '', user = "postgres", host = "127.0.0.1", port = "5432"):
         """Метод подключается от PostgreSQL"""
@@ -111,7 +112,6 @@ class Controller:
                        """, (model_name,))
 
             model_id = self.cursor.fetchall()[0][0]
-
             if alpha == '6':
                 self.cursor.execute("""
                                        select model_id 
@@ -124,8 +124,8 @@ class Controller:
                            from models_alpha_4
                            where model_id = (%s) and angle = (%s)
                             """, (model_id, angle))
-
-            if self.cursor.fetchall():
+            check_exists = self.cursor.fetchall()
+            if check_exists:
                 print(f'{name} была ранее добавлена в models_alpha_{alpha}')
                 flag = 1
 
@@ -133,16 +133,16 @@ class Controller:
                 try:
                     if alpha == '6':
                         self.cursor.execute("""
-                                   insert into models_alpha_6 (angle, pressure_coefficients)
+                                   insert into models_alpha_6
                                    values
-                                   ((%s), (%s))
-                               """, (angle, pressure_coefficients))
+                                   ((%s), (%s), (%s))
+                               """, (model_id, angle, pressure_coefficients))
                     elif alpha == '4':
                         self.cursor.execute("""
-                                   insert into models_alpha_4 (angle, pressure_coefficients)
+                                   insert into models_alpha_4
                                    values
-                                   ((%s), (%s))
-                               """, (angle, pressure_coefficients))
+                                   ((%s), (%s), (%s))
+                               """, (model_id, angle, pressure_coefficients))
                     self.__connection.commit()
                     print(f'{name} добавлена в models_alpha_{alpha}')
                 except (Exception, Error) as error:
@@ -330,11 +330,11 @@ class Controller:
 
 if __name__ == '__main__':
     control = Controller()
-    control.connect(database='', password='')
+    control.connect(database='tpu', password='2325070307')
     control.create_tables()
     control.fill_db()
-    paths = control.get_paths()
     control.disconnect()
+    paths = control.get_paths()
     # import time
     # users = dict()
     # for i in range(1, 80):
