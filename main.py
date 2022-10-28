@@ -1,6 +1,7 @@
 import os
 import uuid
 import psycopg2
+import numpy as np
 import scipy.io as sio
 from psycopg2 import Error
 
@@ -13,6 +14,7 @@ class Controller:
     """
     __connection = None
     __path_database = None
+    __extrapolatedAnglesInfoList = []
 
     # __path_database = 'D:\Projects\mat_to_csv\mat files'
 
@@ -357,11 +359,71 @@ class Controller:
             print(f"Ошибка -> {error}")
             self.__connection.commit()
 
+    def generate_not_exists_case(self, alpha, model_name, angle):
+        angle = int(angle) % 360
+        if angle % 5 != 0:
+            print('Углы должны быть кратны 5')
+            return None
+        if alpha == '4':
+            self.cursor.execute("""
+                select model_id
+                from models_alpha_4
+                where model_id = (
+                select model_id
+                from experiments_alpha_4
+                where model_name = (%s)
+                ) and angle = (%s)
+            """, (model_name, angle))
+
+        elif alpha == '6':
+            self.cursor.execute("""
+                select model_id
+                from models_alpha_6
+                where model_id = (
+                select model_id
+                from experiments_alpha_6
+                where model_name = (%s)
+                ) and angle = (%s)
+            """, (model_name, angle))
+
+        self.__connection.commit()
+        if self.cursor.fetchall():
+            print(f'Модель {model_name} с параметром {alpha} и углом {angle} уже существует')
+        else:
+            print(f'Генерация модели {model_name} с параметром {alpha} и углом {angle}')
+            # rectangle
+            if model_name[0] == model_name[1]:
+                type_base = "box"
+                if 45 < angle < 90 or 135 < angle < 180 or 225 < angle < 270 or 315 < angle < 360:
+                    self.reverse_generation(alpha, model_name, angle)
+                else:
+                    self.forward_generation(alpha, model_name, angle)
+
+    def reverse_generation(self, alpha, model_name, angle):
+        angle_parent = angle % 45
+        breadth, depth, count_sens, pressure_coefficients = self.sql_request(alpha, model_name, angle_parent)
+
+        count_sens_middle_face = breadth * 5
+        count_sens_side_face = depth * 5
+        count_sens_in_row = 2 * (count_sens_middle_face + count_sens_side_face)
+        count_row = count_sens // count_sens_in_row
+
+        pressure_coefficients = pressure_coefficients.swapaxes(0, 1).reshape(4, count_row, count_sens_middle_face)
+
+    def forward_generation(self, alpha, model_name, angle):
+        pass
+
+    def sql_request(self, alpha, model_name, angle):
+        """Возвращает pressure_coefficients из таблицы models_alpha_<alpha>"""
+
+        return None
+
 
 if __name__ == '__main__':
     control = Controller()
-    control.connect(database='', password='')
-    control.create_tables()
+    control.connect(database='tpu', password='2325070307')
+    # control.create_tables()
+    control.generate_not_exists_case('4', '111', '10')
     # control.fill_db()
     control.disconnect()
     # paths = control.get_paths()
