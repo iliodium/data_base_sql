@@ -12,8 +12,9 @@ class Controller:
         -заполнение таблиц
     """
     __connection = None
-    # __path_database = None
-    __path_database = 'D:\Projects\mat_to_csv\mat files'
+    __path_database = None
+
+    # __path_database = 'D:\Projects\mat_to_csv\mat files'
 
     def connect(self, database = '', password = '', user = "postgres", host = "127.0.0.1", port = "5432"):
         """Метод подключается от PostgreSQL"""
@@ -233,7 +234,7 @@ class Controller:
         """
         Метод заполняет таблицу experiments_alpha_<alpha> и models_alpha_<alpha> данными из .mat файла.
 
-        Если параметры не переданы, то в таблицы добавляются все данные из директории.
+        Если путь не передан, то в таблицы добавляются все данные из директории.
         """
 
         if path:
@@ -249,6 +250,7 @@ class Controller:
                         self.fill_db(f"{self.__path_database}\\{alpha}\\{files}\\{file}")
 
     def get_paths(self):
+        """Возвращает список путей всех файлов"""
         self.paths = []
         self.check_path()
         for alpha in os.listdir(self.__path_database):
@@ -270,71 +272,99 @@ class Controller:
             self.__connection.close()
             print("Соединение с PostgreSQL закрыто")
 
-    def create_tables(self, alpha = None):
-        """
-        Метод создаёт таблицы с заданным параметром альфа.
+    def create_tables(self):
+        """Метод создаёт таблицы"""
+        # создается таблица с экспериментами
+        try:
+            self.cursor.execute('''
+                create table if not exists experiments_alpha_4
+                (
+                    model_id serial primary key,
+                    model_name smallint not null,
+                    breadth real not null,
+                    depth real not null,
+                    height real not null,
+                    sample_frequency smallint not null,
+                    sample_period real not null,
+                    uh_AverageWindSpeed real not null,
+                    x_coordinates real[] not null,
+                    y_coordinates real[] not null,
+                    z_coordinates real[] not null,
+                    sensor_number smallint[] not null,
+                    face_number smallint[] not null
+                )''')
+            self.__connection.commit()
+            print("Создана таблица с экспериментами с параметром 4")
+        except Exception as error:
+            print(f"Ошибка -> {error}")
+            self.__connection.commit()
 
-        Если альфа не передан создаются таблицы с параметрами из директории с файлами.
-        """
-        if alpha:
-            # создается таблица с экспериментами
-            try:
-                command = f'''
-                    create table experiments_alpha_{alpha}
-                    (
-                        model_id serial primary key,
-                        model_name smallint not null,
-                        breadth real not null,
-                        depth real not null,
-                        height real not null,
-                        sample_frequency smallint not null,
-                        sample_period real not null,
-                        uh_AverageWindSpeed real not null,
-                        x_coordinates real[] not null,
-                        y_coordinates real[] not null,
-                        z_coordinates real[] not null,
-                        sensor_number smallint[] not null,
-                        face_number smallint[] not null
-                    );'''
-                self.cursor.execute(command)
-                self.__connection.commit()
-                print(f"Создана таблица с экспериментами с параметром {alpha}")
-            except Exception as error:
-                print(f"Ошибка -> {error}")
-                self.__connection.commit()
+        try:
+            self.cursor.execute('''
+                create table if not exists experiments_alpha_6
+                (
+                    model_id serial primary key,
+                    model_name smallint not null,
+                    breadth real not null,
+                    depth real not null,
+                    height real not null,
+                    sample_frequency smallint not null,
+                    sample_period real not null,
+                    uh_AverageWindSpeed real not null,
+                    x_coordinates real[] not null,
+                    y_coordinates real[] not null,
+                    z_coordinates real[] not null,
+                    sensor_number smallint[] not null,
+                    face_number smallint[] not null
+                )''')
+            self.__connection.commit()
+            print("Создана таблица с экспериментами с параметром 6")
+        except Exception as error:
+            print(f"Ошибка -> {error}")
+            self.__connection.commit()
 
-            # создается таблица с моделями
-            try:
-                command = f'''
-                    create table models_alpha_{alpha}
-                    (
-                        model_id serial not null,
-                        angle smallint not null,
-                        pressure_coefficients smallint[][] not null,
-                        
-                        constraint FK{str(uuid.uuid4()).replace('-', '')}
-                         foreign key (model_id) references experiments_alpha_{alpha}(model_id)
-                    );'''
-                self.cursor.execute(command)
-                self.__connection.commit()
-                print(f"Создана таблица с моделями с параметром {alpha}")
-            except Exception as error:
-                print(f"Ошибка -> {error}")
-                self.__connection.commit()
-        else:
-            self.check_path()
-            for alpha in os.listdir(self.__path_database):
-                alp = alpha[-1]
-                control.create_tables(alp)
+        # создается таблица с моделями
+        try:
+            self.cursor.execute(f"""
+                create table if not exists models_alpha_4
+                (
+                    model_id serial not null,
+                    angle smallint not null,
+                    pressure_coefficients smallint[][] not null,
+                    
+                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) references experiments_alpha_4(model_id)
+                )""")
+            self.__connection.commit()
+            print(f"Создана таблица с моделями с параметром 4")
+        except Exception as error:
+            print(f"Ошибка -> {error}")
+            self.__connection.commit()
+
+        try:
+            self.cursor.execute(f"""
+                create table if not exists models_alpha_6
+                (
+                    model_id serial not null,
+                    angle smallint not null,
+                    pressure_coefficients smallint[][] not null,
+
+                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) references experiments_alpha_6(model_id)
+                )""")
+            self.__connection.commit()
+            print(f"Создана таблица с моделями с параметром 6")
+
+        except Exception as error:
+            print(f"Ошибка -> {error}")
+            self.__connection.commit()
 
 
 if __name__ == '__main__':
     control = Controller()
-    control.connect(database='tpu', password='2325070307')
+    control.connect(database='', password='')
     control.create_tables()
-    control.fill_db()
+    # control.fill_db()
     control.disconnect()
-    paths = control.get_paths()
+    # paths = control.get_paths()
     # import time
     # users = dict()
     # for i in range(1, 80):
