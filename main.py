@@ -364,7 +364,8 @@ class Controller:
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
-        if alpha == '4':
+
+        if alpha == '4' or alpha == 4:
             self.cursor.execute("""
                 select model_id
                 from models_alpha_4
@@ -375,7 +376,7 @@ class Controller:
                 ) and angle = (%s)
             """, (model_name, angle))
 
-        elif alpha == '6':
+        elif alpha == '6' or alpha == 6:
             self.cursor.execute("""
                 select model_id
                 from models_alpha_6
@@ -394,37 +395,78 @@ class Controller:
             # rectangle
             if model_name[0] == model_name[1]:
                 type_base = "box"
-                if 45 < angle < 90 or 135 < angle < 180 or 225 < angle < 270 or 315 < angle < 360:
+                if any([45 < angle < 90, 135 < angle < 180, 225 < angle < 270, 315 < angle < 360]):
                     self.reverse_generation(alpha, model_name, angle)
                 else:
                     self.forward_generation(alpha, model_name, angle)
 
     def reverse_generation(self, alpha, model_name, angle):
+        """Разворот и перестановка данных в соответствие с углом"""
+        types_reverse = {
+            45 < angle < 90: (1, 0, 3, 2),
+            135 < angle < 180: (2, 1, 0, 3),
+            225 < angle < 270: (3, 2, 1, 0),
+            315 < angle < 360: (0, 3, 1, 2)
+        }  # параметры для перестановки данных
+        f1, f2, f3, f4 = types_reverse[True]
         angle_parent = angle % 45
         breadth, depth, count_sens, pressure_coefficients = self.sql_request(alpha, model_name, angle_parent)
-
-        count_sens_middle_face = breadth * 5
-        count_sens_side_face = depth * 5
+        count_sens_middle_face = int(breadth * 5 * 10)
+        count_sens_side_face = int(depth * 5 * 10)
         count_sens_in_row = 2 * (count_sens_middle_face + count_sens_side_face)
         count_row = count_sens // count_sens_in_row
-
-        pressure_coefficients = pressure_coefficients.swapaxes(0, 1).reshape(4, count_row, count_sens_middle_face)
+        for i in range(len(pressure_coefficients)):
+            pressure_coefficients[i] = np.array(pressure_coefficients[i]).reshape(
+                (count_row, 4, count_sens_middle_face)).swapaxes(0, 1)
+            pressure_coefficients[i][0], pressure_coefficients[i][1], pressure_coefficients[i][2], \
+            pressure_coefficients[i][3] = pressure_coefficients[i][f1], pressure_coefficients[i][f2], \
+                                          pressure_coefficients[i][f3], pressure_coefficients[i][f4]
 
     def forward_generation(self, alpha, model_name, angle):
         pass
 
     def sql_request(self, alpha, model_name, angle):
-        """Возвращает pressure_coefficients из таблицы models_alpha_<alpha>"""
+        """Возвращает breadth, depth, count_sens, pressure_coefficients из таблицы models_alpha_<alpha>"""
+        if alpha == '4' or alpha == 4:
+            self.cursor.execute("""
+                select breadth, depth, model_id
+                from experiments_alpha_4
+                where model_name = (%s)
+            """, (model_name,))
+        elif alpha == '6' or alpha == 6:
+            self.cursor.execute("""
+                select breadth, depth, model_id
+                from experiments_alpha_6
+                where model_name = (%s)
+            """, (model_name,))
+        self.__connection.commit()
+        breadth, depth, model_id = self.cursor.fetchall()[0]
+        if alpha == '4' or alpha == 4:
+            self.cursor.execute("""
+                select pressure_coefficients
+                from models_alpha_4
+                where model_id = (%s) and angle = (%s)
+            """, (model_id, angle))
+        elif alpha == '6' or alpha == 6:
+            self.cursor.execute("""
+                select pressure_coefficients
+                from models_alpha_6
+                where model_id = (%s) and angle = (%s)
+            """, (model_id, angle))
+        self.__connection.commit()
+        pressure_coefficients = self.cursor.fetchall()[0][0]
+        count_sens = len(pressure_coefficients[0])
 
-        return None
+        return breadth, depth, count_sens, pressure_coefficients
 
 
 if __name__ == '__main__':
     control = Controller()
     control.connect(database='tpu', password='2325070307')
     # control.create_tables()
-    control.generate_not_exists_case('4', '111', '10')
+    # D:\Projects\mat_to_csv\mat files
     # control.fill_db()
+    control.generate_not_exists_case('4', '111', '65')
     control.disconnect()
     # paths = control.get_paths()
     # import time
