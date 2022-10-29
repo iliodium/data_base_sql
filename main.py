@@ -3,7 +3,14 @@ import uuid
 import psycopg2
 import numpy as np
 import scipy.io as sio
+import matplotlib.pyplot as plt
 from psycopg2 import Error
+
+
+class Artist:
+    @staticmethod
+    def izofields_min(parameters):
+        pass
 
 
 class Controller:
@@ -11,10 +18,11 @@ class Controller:
     Через класс происходит управление базой данных:
         -создание таблиц
         -заполнение таблиц
+        -генерация несуществующих вариантов
     """
     __connection = None
     __path_database = None
-    __extrapolatedAnglesInfoList = []
+    __extrapolatedAnglesInfoList = {}  # ключ вида T<model_name>_<alpha>_<angle>
 
     # __path_database = 'D:\Projects\mat_to_csv\mat files'
 
@@ -360,72 +368,100 @@ class Controller:
             self.__connection.commit()
 
     def generate_not_exists_case(self, alpha, model_name, angle):
-        angle = int(angle) % 360
-        if angle % 5 != 0:
-            print('Углы должны быть кратны 5')
-            return None
+        print(f'Генерация модели {model_name} с параметром {alpha} и углом {angle}')
+        if model_name[0] == model_name[1]:  # в основании квадрат
+            if any([45 < angle < 90, 135 < angle < 180, 225 < angle < 270, 315 < angle < 360]):
+                self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'] = self.generation('rev',
+                                                                                                          alpha,
+                                                                                                          model_name,
+                                                                                                          angle)
+            else:
+                self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'] = self.generation('for',
+                                                                                                          alpha,
+                                                                                                          model_name,
+                                                                                                          angle)
+        else:  # в основании прямоугольник
+            if any([90 < angle < 180, 270 < angle < 360]):
+                self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'] = self.generation('rev',
+                                                                                                          alpha,
+                                                                                                          model_name,
+                                                                                                          angle)
+            else:
+                self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'] = self.generation('for',
+                                                                                                          alpha,
+                                                                                                          model_name,
+                                                                                                          angle)
 
-        if alpha == '4' or alpha == 4:
-            self.cursor.execute("""
-                select model_id
-                from models_alpha_4
-                where model_id = (
-                select model_id
-                from experiments_alpha_4
-                where model_name = (%s)
-                ) and angle = (%s)
-            """, (model_name, angle))
-
-        elif alpha == '6' or alpha == 6:
-            self.cursor.execute("""
-                select model_id
-                from models_alpha_6
-                where model_id = (
-                select model_id
-                from experiments_alpha_6
-                where model_name = (%s)
-                ) and angle = (%s)
-            """, (model_name, angle))
-
-        self.__connection.commit()
-        if self.cursor.fetchall():
-            print(f'Модель {model_name} с параметром {alpha} и углом {angle} уже существует')
+    def generation(self, type_gen, alpha, model_name, angle):
+        if model_name[0] == model_name[1]:
+            types_reverse = {
+                45 < angle < 90: (1, 0, 3, 2),
+                135 < angle < 180: (2, 1, 0, 3),
+                225 < angle < 270: (3, 2, 1, 0),
+                315 < angle < 360: (0, 3, 1, 2)
+            }
+            types_forward = {
+                0 <= angle <= 45: (0, 1, 2, 3),
+                90 <= angle <= 135: (3, 0, 1, 2),
+                180 <= angle <= 225: (2, 3, 0, 1),
+                270 <= angle <= 315: (1, 2, 3, 0)
+            }  # параметры для перестановки данных
+            if type_gen == 'rev':
+                view_data = types_reverse[True]
+                angle_parent = 90 * (angle // 90 + 1) - angle
+            else:
+                view_data = types_forward[True]
+                angle_parent = angle % 90
+            return self.norm_pressure_coefficients(alpha, model_name, angle_parent, view_data, type_gen)
         else:
-            print(f'Генерация модели {model_name} с параметром {alpha} и углом {angle}')
-            # rectangle
-            if model_name[0] == model_name[1]:
-                type_base = "box"
-                if any([45 < angle < 90, 135 < angle < 180, 225 < angle < 270, 315 < angle < 360]):
-                    self.reverse_generation(alpha, model_name, angle)
-                else:
-                    self.forward_generation(alpha, model_name, angle)
+            types_reverse = {
+                90 < angle < 180: (2, 1, 0, 3),
+                270 < angle < 360: (0, 3, 2, 1),
+            }
+            types_forward = {
+                0 <= angle <= 90: (0, 1, 2, 3),
+                180 <= angle <= 270: (2, 3, 0, 1)
+            }  # параметры для перестановки данных
+            if type_gen == 'rev':
+                view_data = types_reverse[True]
+                angle_parent = 90 * (angle // 90 + 1) - angle
+            else:
+                view_data = types_forward[True]
+                angle_parent = angle % 90
+            return self.norm_pressure_coefficients(alpha, model_name, angle_parent, view_data, type_gen)
 
-    def reverse_generation(self, alpha, model_name, angle):
-        """Разворот и перестановка данных в соответствие с углом"""
-        types_reverse = {
-            45 < angle < 90: (1, 0, 3, 2),
-            135 < angle < 180: (2, 1, 0, 3),
-            225 < angle < 270: (3, 2, 1, 0),
-            315 < angle < 360: (0, 3, 1, 2)
-        }  # параметры для перестановки данных
-        f1, f2, f3, f4 = types_reverse[True]
-        angle_parent = angle % 45
-        breadth, depth, count_sens, pressure_coefficients = self.sql_request(alpha, model_name, angle_parent)
+    def norm_pressure_coefficients(self, alpha, model_name, angle, view_data = (0, 1, 2, 3), type_gen = 'for'):
+        """Нормирует коэффициенты давления"""
+        breadth, depth, count_sens, pressure_coefficients = self.get_parent_pressure_coefficients(alpha,
+                                                                                                  model_name,
+                                                                                                  angle)
+
         count_sens_middle_face = int(breadth * 5 * 10)
         count_sens_side_face = int(depth * 5 * 10)
         count_sens_in_row = 2 * (count_sens_middle_face + count_sens_side_face)
         count_row = count_sens // count_sens_in_row
-        for i in range(len(pressure_coefficients)):
-            pressure_coefficients[i] = np.array(pressure_coefficients[i]).reshape(
-                (count_row, 4, count_sens_middle_face)).swapaxes(0, 1)
-            pressure_coefficients[i][0], pressure_coefficients[i][1], pressure_coefficients[i][2], \
-            pressure_coefficients[i][3] = pressure_coefficients[i][f1], pressure_coefficients[i][f2], \
-                                          pressure_coefficients[i][f3], pressure_coefficients[i][f4]
+        f1, f2, f3, f4 = view_data
+        if type_gen == 'rev':
+            for i in range(len(pressure_coefficients)):
+                pressure_coefficients[i].reverse()
+                pressure_coefficients[i] = np.array(pressure_coefficients[i]).reshape(
+                    (count_row, 4, count_sens_middle_face)).swapaxes(0, 1) / 1000
+                pressure_coefficients[i][0], pressure_coefficients[i][1], pressure_coefficients[i][2], \
+                pressure_coefficients[i][3] = \
+                    np.copy(pressure_coefficients[i][f1]), np.copy(pressure_coefficients[i][f2]), np.copy(
+                        pressure_coefficients[i][f3]), np.copy(pressure_coefficients[i][f4])
+        else:
+            for i in range(len(pressure_coefficients)):
+                pressure_coefficients[i] = np.array(pressure_coefficients[i]).reshape(
+                    (count_row, 4, count_sens_middle_face)).swapaxes(0, 1) / 1000
+                pressure_coefficients[i][0], pressure_coefficients[i][1], pressure_coefficients[i][2], \
+                pressure_coefficients[i][3] = np.copy(pressure_coefficients[i][f1]), np.copy(
+                    pressure_coefficients[i][f2]), \
+                                              np.copy(pressure_coefficients[i][f3]), np.copy(
+                    pressure_coefficients[i][f4])
+        return pressure_coefficients
 
-    def forward_generation(self, alpha, model_name, angle):
-        pass
-
-    def sql_request(self, alpha, model_name, angle):
+    def get_parent_pressure_coefficients(self, alpha, model_name, angle):
         """Возвращает breadth, depth, count_sens, pressure_coefficients из таблицы models_alpha_<alpha>"""
         if alpha == '4' or alpha == 4:
             self.cursor.execute("""
@@ -459,6 +495,100 @@ class Controller:
 
         return breadth, depth, count_sens, pressure_coefficients
 
+    def get_pressure_coefficients(self, alpha, model_name, angle):
+        """Возвращает нормированные коэффициенты давления"""
+        if alpha == '4' or alpha == 4:
+            self.cursor.execute("""
+                select model_id
+                from models_alpha_4
+                where model_id = (
+                select model_id
+                from experiments_alpha_4
+                where model_name = (%s)
+                ) and angle = (%s)
+            """, (model_name, angle))
+
+        elif alpha == '6' or alpha == 6:
+            self.cursor.execute("""
+                select model_id
+                from models_alpha_6
+                where model_id = (
+                select model_id
+                from experiments_alpha_6
+                where model_name = (%s)
+                ) and angle = (%s)
+            """, (model_name, angle))
+
+        self.__connection.commit()
+
+        model_id = self.cursor.fetchall()
+        if len(model_id) == 0:
+            self.generate_not_exists_case(alpha, model_name, angle)
+            return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}']
+
+        return self.norm_pressure_coefficients(alpha, model_name, angle)
+
+    def graphs(self, type, alpha, model_name, angle):
+        angle = int(angle) % 360
+        if angle % 5 != 0:
+            print('Углы должны быть кратны 5')
+            return None
+        types_graphs = {
+            'izofields_min': Artist.izofields_min
+        }
+        pressure_coefficients = self.get_pressure_coefficients(alpha, model_name, angle)
+
+        pressure_coefficients_mean = np.mean(pressure_coefficients, axis=0)
+
+        min_value, max_value = np.min(pressure_coefficients_mean), np.max(pressure_coefficients_mean)
+
+        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.1)
+        levels = [float('%.1f' % i) for i in levels]
+
+        pressure_coefficients_mean[0] = np.flip(pressure_coefficients_mean[0], 0)
+        pressure_coefficients_mean[1] = np.flip(pressure_coefficients_mean[1], 0)
+        pressure_coefficients_mean[2] = np.flip(pressure_coefficients_mean[2], 0)
+        pressure_coefficients_mean[3] = np.flip(pressure_coefficients_mean[3], 0)
+        data_for_drawing = (
+            pressure_coefficients_mean[0],
+            pressure_coefficients_mean[1],
+            pressure_coefficients_mean[2],
+            pressure_coefficients_mean[3])
+        type_fig = 'cude'  ####
+        heights_arr = []
+        widths_arr = []
+
+        for i in data_for_drawing:
+            heights_arr.append(len(i))
+            widths_arr.append(len(i[0]))
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
+        fig.suptitle('Mean values', fontsize=20, x=0.7, y=0.95)
+        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
+                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
+        for i, j in zip(range(4), data_for_drawing):
+            graph[i].set_title(f'Face: {i + 1}')
+            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
+            graph[i].clabel(contour_data, fontsize=15)
+            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
+            height_arr = heights_arr[i]
+            width_arr = widths_arr[i]
+            graph[i].set_xlim([0.5, width_arr - 1])
+            graph[i].set_ylim([0.5, height_arr - 1])
+            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
+                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
+            if i in [0, 2]:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+            else:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
+                graph[i].set_box_aspect(None)
+            if type_fig == 'cube':
+                graph[i].set_aspect('equal')
+        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        plt.show()
+
 
 if __name__ == '__main__':
     control = Controller()
@@ -466,7 +596,8 @@ if __name__ == '__main__':
     # control.create_tables()
     # D:\Projects\mat_to_csv\mat files
     # control.fill_db()
-    control.generate_not_exists_case('4', '111', '65')
+    # control.generate_not_exists_case('4', '111', '65')
+    control.graphs('izofields_min', '4', '111', '0')
     control.disconnect()
     # paths = control.get_paths()
     # import time
