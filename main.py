@@ -25,6 +25,8 @@ class Controller:
     __extrapolatedAnglesInfoList = {}  # ключ вида T<model_name>_<alpha>_<angle>
 
     # __path_database = 'D:\Projects\mat_to_csv\mat files'
+    def __init__(self):
+        self.cursor = None
 
     def connect(self, database = '', password = '', user = "postgres", host = "127.0.0.1", port = "5432"):
         """Метод подключается от PostgreSQL"""
@@ -342,7 +344,8 @@ class Controller:
                     angle smallint not null,
                     pressure_coefficients smallint[][] not null,
                     
-                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) references experiments_alpha_4(model_id)
+                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) 
+                    references experiments_alpha_4(model_id)
                 )""")
             self.__connection.commit()
             print(f"Создана таблица с моделями с параметром 4")
@@ -358,7 +361,8 @@ class Controller:
                     angle smallint not null,
                     pressure_coefficients smallint[][] not null,
 
-                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) references experiments_alpha_6(model_id)
+                    constraint FK_{str(uuid.uuid4()).replace('-', '')} foreign key (model_id) 
+                    references experiments_alpha_6(model_id)
                 )""")
             self.__connection.commit()
             print(f"Создана таблица с моделями с параметром 6")
@@ -447,7 +451,7 @@ class Controller:
                 coeffs[i] = np.concatenate((arr[f1],
                                             arr[f2],
                                             arr[f3],
-                                            arr[f4]), axis=1).reshape((count_sensors_on_model))
+                                            arr[f4]), axis=1).reshape(count_sensors_on_model)
         else:
             for i in range(len(coeffs)):
                 arr = np.array(coeffs[i]).reshape((count_row, -1))
@@ -460,7 +464,7 @@ class Controller:
                 coeffs[i] = np.concatenate((np.flip(arr[f1], axis=1),
                                             np.flip(arr[f2], axis=1),
                                             np.flip(arr[f3], axis=1),
-                                            np.flip(arr[f4], axis=1)), axis=1).reshape((count_sensors_on_model))
+                                            np.flip(arr[f4], axis=1)), axis=1).reshape(count_sensors_on_model)
         return coeffs
 
     def get_pressure_coefficients(self, alpha, model_name, angle):
@@ -497,12 +501,12 @@ class Controller:
                 return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}']
         return pressure_coefficients[0][0]
 
-    def graphs(self, type, alpha, model_name, angle):
+    def graphs(self, mode, alpha, model_name, angle):
         angle = int(angle) % 360
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
-        types_graphs = {
+        modes_graphs = {
             'izofields_min': Artist.izofields_min
         }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
@@ -512,6 +516,7 @@ class Controller:
         count_sensors_on_side = int(model_name[1]) * 5
         count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
         pressure_coefficients_mean = np.mean(pressure_coefficients, axis=0)
+        min_value, max_value = np.min(pressure_coefficients_mean), np.max(pressure_coefficients_mean)
         pressure_coefficients_mean = np.reshape(pressure_coefficients_mean, (count_row, -1))
         pressure_coefficients_mean = np.split(pressure_coefficients_mean,
                                               [count_sensors_on_middle,
@@ -519,12 +524,13 @@ class Controller:
                                                2 * count_sensors_on_middle + count_sensors_on_side,
                                                2 * (count_sensors_on_middle + count_sensors_on_side)
                                                ], axis=1)
-        data_for_drawing = np.array([pressure_coefficients_mean[0],
-                                     pressure_coefficients_mean[1],
-                                     pressure_coefficients_mean[2],
-                                     pressure_coefficients_mean[3]])
 
-        min_value, max_value = np.min(data_for_drawing), np.max(data_for_drawing)
+        del pressure_coefficients_mean[4]
+        data_for_drawing = [np.flip(pressure_coefficients_mean[0], axis=0),
+                            np.flip(pressure_coefficients_mean[1], axis=0),
+                            np.flip(pressure_coefficients_mean[2], axis=0),
+                            np.flip(pressure_coefficients_mean[3], axis=0)
+                            ]
 
         levels = np.arange(min_value - 0.1, max_value + 0.1, 0.1)
         levels = [float('%.1f' % i) for i in levels]
@@ -573,7 +579,8 @@ if __name__ == '__main__':
     # D:\Projects\mat_to_csv\mat files
     # control.fill_db()
     # control.generate_not_exists_case('4', '111', '65')
-    control.graphs('izofields_min', '4', '111', '75')
+    control.graphs('izofields_min', '4', '111', '265')
+
     control.disconnect()
     # paths = control.get_paths()
     # import time
