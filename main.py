@@ -8,9 +8,279 @@ from psycopg2 import Error
 
 
 class Artist:
+    """Класс отвечает за отрисовку графиков
+
+    Виды графиков:
+        -Изополя:
+            -Максимальные значения
+            -Средние значения
+            -Минимальные значения
+            -Среднее квадратичное отклонение
+
+        -Огибающие:
+            -Максимальные значения
+            -Минимальные значения
+
+        -Коэффициенты обеспеченности:
+            -Максимальные значения
+            -Минимальные значения
+
+        -Спектры
+
+    """
+
     @staticmethod
-    def izofields_min(parameters):
-        pass
+    def izofield_min(pressure_coefficients, alpha, model_name, angle):
+        count_sensors_on_model = len(pressure_coefficients[0])
+        pressure_coefficients = np.min(pressure_coefficients, axis=0)
+        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
+        pressure_coefficients = np.split(pressure_coefficients,
+                                         [count_sensors_on_middle,
+                                          count_sensors_on_middle + count_sensors_on_side,
+                                          2 * count_sensors_on_middle + count_sensors_on_side,
+                                          2 * (count_sensors_on_middle + count_sensors_on_side)
+                                          ], axis=1)
+        del pressure_coefficients[4]
+        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
+                            np.flip(pressure_coefficients[1], axis=0),
+                            np.flip(pressure_coefficients[2], axis=0),
+                            np.flip(pressure_coefficients[3], axis=0)
+                            ]
+
+        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
+        levels = [float('%.1f' % i) for i in levels]
+
+        if model_name[0] == model_name[1]:
+            type_fig = 'box'
+        else:
+            type_fig = 'rectangle'
+        heights_arr = []
+        widths_arr = []
+
+        for i in data_for_drawing:
+            heights_arr.append(len(i))
+            widths_arr.append(len(i[0]))
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
+        fig.suptitle('Min values', fontsize=20, x=0.7, y=0.95)
+        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
+                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
+        for i, j in zip(range(4), data_for_drawing):
+            graph[i].set_title(f'Face: {i + 1}')
+            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
+            graph[i].clabel(contour_data, fontsize=15)
+            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
+            height_arr = heights_arr[i]
+            width_arr = widths_arr[i]
+            graph[i].set_xlim([0.5, width_arr - 1])
+            graph[i].set_ylim([0.5, height_arr - 1])
+            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
+                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
+            if i in [0, 2]:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+            else:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
+                graph[i].set_box_aspect(None)
+            if type_fig == 'box':
+                graph[i].set_aspect('equal')
+        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        plt.show()
+        plt.close()
+
+    @staticmethod
+    def izofield_mean(pressure_coefficients, alpha, model_name, angle):
+        count_sensors_on_model = len(pressure_coefficients[0])
+        pressure_coefficients = np.mean(pressure_coefficients, axis=0)
+        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
+        pressure_coefficients = np.split(pressure_coefficients,
+                                         [count_sensors_on_middle,
+                                          count_sensors_on_middle + count_sensors_on_side,
+                                          2 * count_sensors_on_middle + count_sensors_on_side,
+                                          2 * (count_sensors_on_middle + count_sensors_on_side)
+                                          ], axis=1)
+        del pressure_coefficients[4]
+        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
+                            np.flip(pressure_coefficients[1], axis=0),
+                            np.flip(pressure_coefficients[2], axis=0),
+                            np.flip(pressure_coefficients[3], axis=0)
+                            ]
+
+        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.1)
+        levels = [float('%.1f' % i) for i in levels]
+        if model_name[0] == model_name[1]:
+            type_fig = 'box'
+        else:
+            type_fig = 'rectangle'
+        heights_arr = []
+        widths_arr = []
+        for i in data_for_drawing:
+            heights_arr.append(len(i))
+            widths_arr.append(len(i[0]))
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
+        fig.suptitle('Mean values', fontsize=20, x=0.7, y=0.95)
+        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
+                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
+        for i, j in zip(range(4), data_for_drawing):
+            graph[i].set_title(f'Face: {i + 1}')
+            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
+            graph[i].clabel(contour_data, fontsize=15)
+            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
+            height_arr = heights_arr[i]
+            width_arr = widths_arr[i]
+            graph[i].set_xlim([0.5, width_arr - 1])
+            graph[i].set_ylim([0.5, height_arr - 1])
+            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
+                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
+            if i in [0, 2]:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+            else:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
+                graph[i].set_box_aspect(None)
+            if type_fig == 'box':
+                graph[i].set_aspect('equal')
+        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        plt.show()
+        plt.close()
+
+    @staticmethod
+    def izofield_max(pressure_coefficients, alpha, model_name, angle):
+        count_sensors_on_model = len(pressure_coefficients[0])
+        pressure_coefficients = np.max(pressure_coefficients, axis=0)
+        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
+        pressure_coefficients = np.split(pressure_coefficients,
+                                         [count_sensors_on_middle,
+                                          count_sensors_on_middle + count_sensors_on_side,
+                                          2 * count_sensors_on_middle + count_sensors_on_side,
+                                          2 * (count_sensors_on_middle + count_sensors_on_side)
+                                          ], axis=1)
+        del pressure_coefficients[4]
+        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
+                            np.flip(pressure_coefficients[1], axis=0),
+                            np.flip(pressure_coefficients[2], axis=0),
+                            np.flip(pressure_coefficients[3], axis=0)
+                            ]
+
+        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
+        levels = [float('%.1f' % i) for i in levels]
+
+        if model_name[0] == model_name[1]:
+            type_fig = 'box'
+        else:
+            type_fig = 'rectangle'
+        heights_arr = []
+        widths_arr = []
+
+        for i in data_for_drawing:
+            heights_arr.append(len(i))
+            widths_arr.append(len(i[0]))
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
+        fig.suptitle('Max values', fontsize=20, x=0.7, y=0.95)
+        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
+                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
+        for i, j in zip(range(4), data_for_drawing):
+            graph[i].set_title(f'Face: {i + 1}')
+            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
+            graph[i].clabel(contour_data, fontsize=15)
+            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
+            height_arr = heights_arr[i]
+            width_arr = widths_arr[i]
+            graph[i].set_xlim([0.5, width_arr - 1])
+            graph[i].set_ylim([0.5, height_arr - 1])
+            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
+                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
+            if i in [0, 2]:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+            else:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
+                graph[i].set_box_aspect(None)
+            if type_fig == 'box':
+                graph[i].set_aspect('equal')
+        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        plt.show()
+        plt.close()
+
+    @staticmethod
+    def izofield_RMS(pressure_coefficients, alpha, model_name, angle):
+        count_sensors_on_model = len(pressure_coefficients[0])
+        pressure_coefficients = np.std(pressure_coefficients, axis=0)
+        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
+        pressure_coefficients = np.split(pressure_coefficients,
+                                         [count_sensors_on_middle,
+                                          count_sensors_on_middle + count_sensors_on_side,
+                                          2 * count_sensors_on_middle + count_sensors_on_side,
+                                          2 * (count_sensors_on_middle + count_sensors_on_side)
+                                          ], axis=1)
+        del pressure_coefficients[4]
+        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
+                            np.flip(pressure_coefficients[1], axis=0),
+                            np.flip(pressure_coefficients[2], axis=0),
+                            np.flip(pressure_coefficients[3], axis=0)
+                            ]
+        levels = np.arange(min_value - 0.05, max_value + 0.05, 0.05)
+        levels = [float('%.2f' % i) for i in levels]
+
+        if model_name[0] == model_name[1]:
+            type_fig = 'box'
+        else:
+            type_fig = 'rectangle'
+        heights_arr = []
+        widths_arr = []
+
+        for i in data_for_drawing:
+            heights_arr.append(len(i))
+            widths_arr.append(len(i[0]))
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
+        fig.suptitle('RMS values', fontsize=20, x=0.7, y=0.95)
+        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
+                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
+        for i, j in zip(range(4), data_for_drawing):
+            graph[i].set_title(f'Face: {i + 1}')
+            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
+            graph[i].clabel(contour_data, fontsize=15)
+            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
+            height_arr = heights_arr[i]
+            width_arr = widths_arr[i]
+            graph[i].set_xlim([0.5, width_arr - 1])
+            graph[i].set_ylim([0.5, height_arr - 1])
+            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
+                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
+            if i in [0, 2]:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+            else:
+                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
+                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
+                graph[i].set_box_aspect(None)
+            if type_fig == 'box':
+                graph[i].set_aspect('equal')
+        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        plt.show()
+        plt.close()
 
 
 class Controller:
@@ -372,6 +642,7 @@ class Controller:
             self.__connection.commit()
 
     def generate_not_exists_case(self, alpha, model_name, angle):
+        """Определяет параметры для генерация несуществующего варианта"""
         print(f'Генерация модели {model_name} с параметром {alpha} и углом {angle}')
         if model_name[0] == model_name[1]:  # в основании квадрат
             if any([45 < angle < 90, 135 < angle < 180, 225 < angle < 270, 315 < angle < 360]):
@@ -502,74 +773,20 @@ class Controller:
         return pressure_coefficients[0][0]
 
     def graphs(self, mode, alpha, model_name, angle):
+        """Метод отвечает за вызов графика из класса Artist"""
         angle = int(angle) % 360
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
         modes_graphs = {
-            'izofields_min': Artist.izofields_min
+            'izofield_min': Artist.izofield_min,
+            'izofield_mean': Artist.izofield_mean,
+            'izofield_max': Artist.izofield_max,
+            'izofield_RMS': Artist.izofield_RMS,
         }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
-        count_sensors_on_model = len(pressure_coefficients[0])
 
-        count_sensors_on_middle = int(model_name[0]) * 5
-        count_sensors_on_side = int(model_name[1]) * 5
-        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
-        pressure_coefficients_mean = np.mean(pressure_coefficients, axis=0)
-        min_value, max_value = np.min(pressure_coefficients_mean), np.max(pressure_coefficients_mean)
-        pressure_coefficients_mean = np.reshape(pressure_coefficients_mean, (count_row, -1))
-        pressure_coefficients_mean = np.split(pressure_coefficients_mean,
-                                              [count_sensors_on_middle,
-                                               count_sensors_on_middle + count_sensors_on_side,
-                                               2 * count_sensors_on_middle + count_sensors_on_side,
-                                               2 * (count_sensors_on_middle + count_sensors_on_side)
-                                               ], axis=1)
-
-        del pressure_coefficients_mean[4]
-        data_for_drawing = [np.flip(pressure_coefficients_mean[0], axis=0),
-                            np.flip(pressure_coefficients_mean[1], axis=0),
-                            np.flip(pressure_coefficients_mean[2], axis=0),
-                            np.flip(pressure_coefficients_mean[3], axis=0)
-                            ]
-
-        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.1)
-        levels = [float('%.1f' % i) for i in levels]
-        if model_name[0] == model_name[1]:
-            type_fig = 'box'
-        else:
-            type_fig = 'rectangle'
-        heights_arr = []
-        widths_arr = []
-        for i in data_for_drawing:
-            heights_arr.append(len(i))
-            widths_arr.append(len(i[0]))
-        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
-        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
-        fig.suptitle('Mean values', fontsize=20, x=0.7, y=0.95)
-        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
-                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
-        for i, j in zip(range(4), data_for_drawing):
-            graph[i].set_title(f'Face: {i + 1}')
-            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
-            graph[i].clabel(contour_data, fontsize=15)
-            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
-            height_arr = heights_arr[i]
-            width_arr = widths_arr[i]
-            graph[i].set_xlim([0.5, width_arr - 1])
-            graph[i].set_ylim([0.5, height_arr - 1])
-            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
-                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
-            if i in [0, 2]:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
-            else:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
-                graph[i].set_box_aspect(None)
-            if type_fig == 'box':
-                graph[i].set_aspect('equal')
-        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
-        plt.show()
+        modes_graphs[mode](pressure_coefficients, alpha, model_name, angle)
 
 
 if __name__ == '__main__':
@@ -579,7 +796,7 @@ if __name__ == '__main__':
     # D:\Projects\mat_to_csv\mat files
     # control.fill_db()
     # control.generate_not_exists_case('4', '111', '65')
-    control.graphs('izofields_min', '4', '111', '265')
+    control.graphs('izofield_RMS', '4', '111', '35')
 
     control.disconnect()
     # paths = control.get_paths()

@@ -1,7 +1,5 @@
 
-vpython:S1186"YAdd a nested comment explaining why this method is empty, or complete the implementation.(•¥À…ûÿÿÿÿ
-€python:S116"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ŽÓñ´þÿÿÿÿ
-;python:S125"Remove this commented out code.(‚¯ïéÿÿÿÿÿ
-Kpython:S1172ø",Remove the unused function parameter "mode".(Ö·¼38œñ ÓÂ0
-Opython:S1481ý"0Remove the unused local variable "modes_graphs".(ê»·E8•¨¡ÓÂ0
-<python:S125É"Remove this commented out code.(â ¯Üúÿÿÿÿ
+gpython:S100ß"PRename method "izofield_RMS" to match the regular expression ^[a-z_][a-z0-9_]*$.(Ñ€î-
+python:S116§"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ŽÓñ´þÿÿÿÿ
+<python:S125©"Remove this commented out code.(‚¯ïéÿÿÿÿÿ
+<python:S125¢"Remove this commented out code.(â ¯Üúÿÿÿÿ
