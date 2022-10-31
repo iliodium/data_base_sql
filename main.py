@@ -45,15 +45,21 @@ class Artist:
                                           2 * (count_sensors_on_middle + count_sensors_on_side)
                                           ], axis=1)
         del pressure_coefficients[4]
-        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
-                            np.flip(pressure_coefficients[1], axis=0),
-                            np.flip(pressure_coefficients[2], axis=0),
-                            np.flip(pressure_coefficients[3], axis=0)
-                            ]
+        data_for_drawing = []
+
+        for j in pressure_coefficients:
+            new = []
+            for i in j:
+                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
+            new.insert(0, new[0])
+            new.append(new[-1])
+            data_for_drawing.append(np.flip(np.array(new), axis=0))
 
         levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
-        levels = [float('%.1f' % i) for i in levels]
+        print(levels)
 
+        levels = [float('%.1f' % i) for i in levels]
+        print(levels)
         if model_name[0] == model_name[1]:
             type_fig = 'box'
         else:
@@ -109,11 +115,15 @@ class Artist:
                                           2 * (count_sensors_on_middle + count_sensors_on_side)
                                           ], axis=1)
         del pressure_coefficients[4]
-        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
-                            np.flip(pressure_coefficients[1], axis=0),
-                            np.flip(pressure_coefficients[2], axis=0),
-                            np.flip(pressure_coefficients[3], axis=0)
-                            ]
+        data_for_drawing = []
+
+        for j in pressure_coefficients:
+            new = []
+            for i in j:
+                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
+            new.insert(0, new[0])
+            new.append(new[-1])
+            data_for_drawing.append(np.flip(np.array(new), axis=0))
 
         levels = np.arange(min_value - 0.1, max_value + 0.1, 0.1)
         levels = [float('%.1f' % i) for i in levels]
@@ -171,11 +181,15 @@ class Artist:
                                           2 * (count_sensors_on_middle + count_sensors_on_side)
                                           ], axis=1)
         del pressure_coefficients[4]
-        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
-                            np.flip(pressure_coefficients[1], axis=0),
-                            np.flip(pressure_coefficients[2], axis=0),
-                            np.flip(pressure_coefficients[3], axis=0)
-                            ]
+        data_for_drawing = []
+
+        for j in pressure_coefficients:
+            new = []
+            for i in j:
+                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
+            new.insert(0, new[0])
+            new.append(new[-1])
+            data_for_drawing.append(np.flip(np.array(new), axis=0))
 
         levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
         levels = [float('%.1f' % i) for i in levels]
@@ -220,7 +234,7 @@ class Artist:
         plt.close()
 
     @staticmethod
-    def izofield_RMS(pressure_coefficients, alpha, model_name, angle):
+    def izofield_std(pressure_coefficients, alpha, model_name, angle):
         count_sensors_on_model = len(pressure_coefficients[0])
         pressure_coefficients = np.std(pressure_coefficients, axis=0)
         min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
@@ -235,11 +249,16 @@ class Artist:
                                           2 * (count_sensors_on_middle + count_sensors_on_side)
                                           ], axis=1)
         del pressure_coefficients[4]
-        data_for_drawing = [np.flip(pressure_coefficients[0], axis=0),
-                            np.flip(pressure_coefficients[1], axis=0),
-                            np.flip(pressure_coefficients[2], axis=0),
-                            np.flip(pressure_coefficients[3], axis=0)
-                            ]
+        data_for_drawing = []
+
+        for j in pressure_coefficients:
+            new = []
+            for i in j:
+                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
+            new.insert(0, new[0])
+            new.append(new[-1])
+            data_for_drawing.append(np.flip(np.array(new), axis=0))
+
         levels = np.arange(min_value - 0.05, max_value + 0.05, 0.05)
         levels = [float('%.2f' % i) for i in levels]
 
@@ -294,7 +313,6 @@ class Controller:
     __path_database = None
     __extrapolatedAnglesInfoList = {}  # ключ вида T<model_name>_<alpha>_<angle>
 
-    # __path_database = 'D:\Projects\mat_to_csv\mat files'
     def __init__(self):
         self.cursor = None
 
@@ -782,7 +800,7 @@ class Controller:
             'izofield_min': Artist.izofield_min,
             'izofield_mean': Artist.izofield_mean,
             'izofield_max': Artist.izofield_max,
-            'izofield_RMS': Artist.izofield_RMS,
+            'izofield_std': Artist.izofield_std,
         }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
 
@@ -794,9 +812,9 @@ if __name__ == '__main__':
     control.connect(database='tpu', password='2325070307')
     # control.create_tables()
     # D:\Projects\mat_to_csv\mat files
-    # control.fill_db()
+    #control.fill_db()
     # control.generate_not_exists_case('4', '111', '65')
-    control.graphs('izofield_RMS', '4', '111', '35')
+    control.graphs('izofield_std', '4', '112', '0')
 
     control.disconnect()
     # paths = control.get_paths()

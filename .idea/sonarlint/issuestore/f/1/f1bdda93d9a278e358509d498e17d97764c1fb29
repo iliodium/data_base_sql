@@ -1,5 +1,3 @@
 
-gpython:S100ß"PRename method "izofield_RMS" to match the regular expression ^[a-z_][a-z0-9_]*$.(Ñ€î-
-python:S116§"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ŽÓñ´þÿÿÿÿ
-<python:S125©"Remove this commented out code.(‚¯ïéÿÿÿÿÿ
-<python:S125¢"Remove this commented out code.(â ¯Üúÿÿÿÿ
+python:S116º"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ŽÓñ´þÿÿÿÿ
+<python:S125´"Remove this commented out code.(â ¯Üúÿÿÿÿ
