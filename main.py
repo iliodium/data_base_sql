@@ -4,7 +4,10 @@ import psycopg2
 import numpy as np
 import scipy.interpolate
 import scipy.io as sio
+import matplotlib.cm as cm
+import matplotlib.tri as mtri
 import matplotlib.pyplot as plt
+
 from psycopg2 import Error
 from scipy.fft import fft, rfftfreq
 
@@ -32,301 +35,156 @@ class Artist:
     """
 
     @staticmethod
-    def isofield_min(pressure_coefficients, alpha, model_name, angle):
-        count_sensors_on_model = len(pressure_coefficients[0])
-        pressure_coefficients = np.min(pressure_coefficients, axis=0)
-        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
-        count_sensors_on_middle = int(model_name[0]) * 5
-        count_sensors_on_side = int(model_name[1]) * 5
-        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
-        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
-        pressure_coefficients = np.split(pressure_coefficients,
-                                         [count_sensors_on_middle,
-                                          count_sensors_on_middle + count_sensors_on_side,
-                                          2 * count_sensors_on_middle + count_sensors_on_side,
-                                          2 * (count_sensors_on_middle + count_sensors_on_side)
-                                          ], axis=1)
-        del pressure_coefficients[4]
-        data_for_drawing = []
-
-        for j in pressure_coefficients:
-            new = []
-            for i in j:
-                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
-            new.insert(0, new[0])
-            new.append(new[-1])
-            data_for_drawing.append(np.flip(np.array(new), axis=0))
-
-        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
-        print(levels)
-
-        levels = [float('%.1f' % i) for i in levels]
-        print(levels)
-        if model_name[0] == model_name[1]:
-            type_fig = 'box'
-        else:
-            type_fig = 'rectangle'
-        heights_arr = []
-        widths_arr = []
-
-        for i in data_for_drawing:
-            heights_arr.append(len(i))
-            widths_arr.append(len(i[0]))
-        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
-        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
-        fig.suptitle('Min values', fontsize=20, x=0.7, y=0.95)
-        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
-                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
-        for i, j in zip(range(4), data_for_drawing):
-            graph[i].set_title(f'Face: {i + 1}')
-            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
-            graph[i].clabel(contour_data, fontsize=15)
-            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
-            height_arr = heights_arr[i]
-            width_arr = widths_arr[i]
-            graph[i].set_xlim([0.5, width_arr - 1])
-            graph[i].set_ylim([0.5, height_arr - 1])
-            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
-                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
-            if i in [0, 2]:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
-            else:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
-                graph[i].set_box_aspect(None)
-            if type_fig == 'box':
-                graph[i].set_aspect('equal')
-        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
-        plt.show()
-        plt.close()
+    def interpolator(coords, val):
+        return scipy.interpolate.RBFInterpolator(coords, val, kernel='cubic')
 
     @staticmethod
-    def isofield_mean(pressure_coefficients, coordinates, alpha, model_name, angle):
-        count_sensors_on_model = len(pressure_coefficients[0])
-        pressure_coefficients = np.mean(pressure_coefficients, axis=0)
+    def isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle):
+        """Отрисовка изополей"""
+        mods = {
+            'max': np.max(pressure_coefficients, axis=0),
+            'mean': np.mean(pressure_coefficients, axis=0),
+            'min': np.min(pressure_coefficients, axis=0),
+            'std': np.std(pressure_coefficients, axis=0),
+        }  # Виды изополей
+        pressure_coefficients = mods[mode]
+        min_v = np.min(pressure_coefficients)
+        max_v = np.max(pressure_coefficients)
+        steps = {
+            'max': 0.2,
+            'mean': 0.02 if alpha == 6 else 0.1,
+            'min': 0.2,
+            'std': 0.05,
+        }  # Шаги для изополей
+        #  Шаг для изополей и контурных линий
+        levels = np.arange(np.round(min_v, 1), np.round(max_v, 1) + 0.1, steps[mode])
+
         x, z = coordinates
-        x = [abs(i) for i in x]
-        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        count_sensors_on_model = len(pressure_coefficients)
         count_sensors_on_middle = int(model_name[0]) * 5
         count_sensors_on_side = int(model_name[1]) * 5
         count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
         pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
-        pressure_coefficients = np.split(pressure_coefficients,
-                                         [count_sensors_on_middle,
-                                          count_sensors_on_middle + count_sensors_on_side,
-                                          2 * count_sensors_on_middle + count_sensors_on_side,
-                                          2 * (count_sensors_on_middle + count_sensors_on_side)
-                                          ], axis=1)
+        pressure_coefficients = np.split(pressure_coefficients, [count_sensors_on_middle,
+                                                                 count_sensors_on_middle + count_sensors_on_side,
+                                                                 2 * count_sensors_on_middle + count_sensors_on_side,
+                                                                 2 * (count_sensors_on_middle + count_sensors_on_side)
+                                                                 ], axis=1)
         x = np.reshape(x, (count_row, -1))
-        x = np.split(x,
-                     [count_sensors_on_middle,
-                      count_sensors_on_middle + count_sensors_on_side,
-                      2 * count_sensors_on_middle + count_sensors_on_side,
-                      2 * (count_sensors_on_middle + count_sensors_on_side)
-                      ], axis=1)
+        x = np.split(x, [count_sensors_on_middle,
+                         count_sensors_on_middle + count_sensors_on_side,
+                         2 * count_sensors_on_middle + count_sensors_on_side,
+                         2 * (count_sensors_on_middle + count_sensors_on_side)
+                         ], axis=1)
+
         z = np.reshape(z, (count_row, -1))
-        z = np.split(z,
-                     [count_sensors_on_middle,
-                      count_sensors_on_middle + count_sensors_on_side,
-                      2 * count_sensors_on_middle + count_sensors_on_side,
-                      2 * (count_sensors_on_middle + count_sensors_on_side)
-                      ], axis=1)
+        z = np.split(z, [count_sensors_on_middle,
+                         count_sensors_on_middle + count_sensors_on_side,
+                         2 * count_sensors_on_middle + count_sensors_on_side,
+                         2 * (count_sensors_on_middle + count_sensors_on_side)
+                         ], axis=1)
 
         del pressure_coefficients[4]
         del x[4]
         del z[4]
-        pressure_coefficients = np.array(pressure_coefficients)
-        import matplotlib.tri as mtri
-        import matplotlib.cm as cm
-
-        fig, graph = plt.subplots(1, 4)
-        levels = np.arange(np.min(pressure_coefficients) - 0.1, np.max(pressure_coefficients) + 0.1, 0.1)
-
-        print(levels)
-
-        cmap = cm.get_cmap(name="jet")
         for i in range(4):
-            x1 = x[i].reshape(1, -1)[0]
-            z1 = z[i].reshape(1, -1)[0]
-            a = pressure_coefficients[i].reshape(1, -1)[0]
+            x[i] = x[i].tolist()
+            z[i] = z[i].tolist()
 
-            triang = mtri.Triangulation(x1, z1)
+        x1, x2, x3, x4 = x  # x это тензор со всеми координатами граней по ширине,x1...x4 координаты отдельных граней
+        z1, z2, z3, z4 = z  # z это тензор со всеми координатами граней по высоте,z1...z4 координаты отдельных граней
+
+        x = [np.array(x1), np.array(x2), np.array(x3), np.array(x4)]  # Входные координаты для изополей
+        z = [np.array(z1), np.array(z2), np.array(z3), np.array(z4)]  # Входные координаты для изополей
+
+        # Расширение матрицы координат по бокам
+        for i in range(len(x1)):
+            x1[i] = [0] + x1[i] + [breadth]
+            x2[i] = [breadth] + x2[i] + [breadth + depth]
+            x3[i] = [breadth + depth] + x3[i] + [2 * breadth + depth]
+            x4[i] = [2 * breadth + depth] + x4[i] + [2 * (breadth + depth)]
+
+        x1.append(x1[0])
+        x2.append(x2[0])
+        x3.append(x3[0])
+        x4.append(x4[0])
+
+        x1.insert(0, x1[0])
+        x2.insert(0, x2[0])
+        x3.insert(0, x3[0])
+        x4.insert(0, x4[0])
+
+        x_extended = [np.array(x1), np.array(x2), np.array(x3), np.array(x4)]  # Расширенные координаты для изополей
+
+        # Расширение матрицы координат по бокам
+        for i in range(len(z1)):
+            z1[i] = [z1[i][0]] + z1[i] + [z1[i][0]]
+            z2[i] = [z2[i][0]] + z2[i] + [z2[i][0]]
+            z3[i] = [z3[i][0]] + z3[i] + [z3[i][0]]
+            z4[i] = [z4[i][0]] + z4[i] + [z4[i][0]]
+
+        z1.append([0 for _ in range(len(z1[0]))])
+        z2.append([0 for _ in range(len(z2[0]))])
+        z3.append([0 for _ in range(len(z3[0]))])
+        z4.append([0 for _ in range(len(z4[0]))])
+
+        z1.insert(0, [height for _ in range(len(z1[0]))])
+        z2.insert(0, [height for _ in range(len(z2[0]))])
+        z3.insert(0, [height for _ in range(len(z3[0]))])
+        z4.insert(0, [height for _ in range(len(z4[0]))])
+
+        z_extended = [np.array(z1), np.array(z2), np.array(z3), np.array(z4)]  # Расширенные координаты для изополей
+        fig, graph = plt.subplots(1, 4)
+        cmap = cm.get_cmap(name="jet")
+        data_colorbar = None
+        for i in range(4):
+            # x это координаты по ширине
+            x_new = x_extended[i].reshape(1, -1)[0]
+            x_old = x[i].reshape(1, -1)[0]
+            # Вычитаем чтобы все координаты по x находились в интервале [0, 1]
+            if i == 1:
+                x_old -= breadth
+                x_new -= breadth
+            elif i == 2:
+                x_old -= (breadth + depth)
+                x_new -= (breadth + depth)
+            elif i == 3:
+                x_old -= (2 * breadth + depth)
+                x_new -= (2 * breadth + depth)
+            # z это координаты по высоте
+            z_new = z_extended[i].reshape(1, -1)[0]
+            z_old = z[i].reshape(1, -1)[0]
+            data_old = pressure_coefficients[i].reshape(1, -1)[0]
+            coords = [[i1, j1] for i1, j1 in zip(x_old, z_old)]  # Старые координаты
+            # Интерполятор полученный на основе имеющихся данных
+            interpolator = Artist.interpolator(coords, data_old)
+            # Получаем данные для несуществующих датчиков
+            data_new = [float(interpolator([[X, Y]])) for X, Y in zip(x_new, z_new)]
+
+            triang = mtri.Triangulation(x_new, z_new)
             refiner = mtri.UniformTriRefiner(triang)
-            grid, value = refiner.refine_field(a, subdiv=4)
-            graph[i].tricontourf(grid, value, cmap=cmap, extend='max',levels=levels)
-            aq = graph[i].tricontour(grid, value, linewidths=1, linestyles='solid', colors='black',levels=levels)
-            graph[i].clabel(aq, fontsize=15)
+            grid, value = refiner.refine_field(data_new, subdiv=4)
+
+            data_colorbar = graph[i].tricontourf(grid, value, cmap=cmap, levels=levels, extend='both')
+            aq = graph[i].tricontour(grid, value, linewidths=1, linestyles='solid', colors='black', levels=levels)
+
+            graph[i].clabel(aq, fontsize=13)
+            graph[i].set_ylim([0, height])
             graph[i].set_aspect('equal')
-        fig.colorbar(cm.ScalarMappable(cmap=cmap), ax=graph, location='bottom', cmap=cmap)
-        plt.show()
-        plt.close()
-
-        # isofield = scipy.interpolate.RBFInterpolator(сетка,значения)
-
-    @staticmethod
-    def plot(x, y, a, ai, title):
-        fig, ax = plt.subplots()
-
-        im = ax.imshow(ai.T, origin='lower',
-                       extent=[x.min(), x.max(), y.min(), y.max()])
-        ax.scatter(x, y, c=a)
-
-        ax.set(xlabel='X', ylabel='Y', title=title)
-        fig.colorbar(im)
-
-    @staticmethod
-    def normal_interp(x, y, a, xi, yi):
-        rbf = scipy.interpolate.Rbf(x, y, a)
-        ai = rbf(xi, yi)
-        return ai
-
-    @staticmethod
-    def rescaled_interp(x, y, a, xi, yi):
-        a_rescaled = (a - a.min()) / a.ptp()
-        ai = Artist.normal_interp(x, y, a_rescaled, xi, yi)
-        ai = a.ptp() * ai + a.min()
-        return ai
-
-    @staticmethod
-    def isofield_max(pressure_coefficients, alpha, model_name, angle):
-        count_sensors_on_model = len(pressure_coefficients[0])
-        pressure_coefficients = np.max(pressure_coefficients, axis=0)
-        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
-        count_sensors_on_middle = int(model_name[0]) * 5
-        count_sensors_on_side = int(model_name[1]) * 5
-        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
-        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
-        pressure_coefficients = np.split(pressure_coefficients,
-                                         [count_sensors_on_middle,
-                                          count_sensors_on_middle + count_sensors_on_side,
-                                          2 * count_sensors_on_middle + count_sensors_on_side,
-                                          2 * (count_sensors_on_middle + count_sensors_on_side)
-                                          ], axis=1)
-        del pressure_coefficients[4]
-        data_for_drawing = []
-
-        for j in pressure_coefficients:
-            new = []
-            for i in j:
-                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
-            new.insert(0, new[0])
-            new.append(new[-1])
-            data_for_drawing.append(np.flip(np.array(new), axis=0))
-
-        levels = np.arange(min_value - 0.1, max_value + 0.1, 0.2)
-        levels = [float('%.1f' % i) for i in levels]
-
-        if model_name[0] == model_name[1]:
-            type_fig = 'box'
-        else:
-            type_fig = 'rectangle'
-        heights_arr = []
-        widths_arr = []
-
-        for i in data_for_drawing:
-            heights_arr.append(len(i))
-            widths_arr.append(len(i[0]))
-        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
-        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
-        fig.suptitle('Max values', fontsize=20, x=0.7, y=0.95)
-        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
-                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
-        for i, j in zip(range(4), data_for_drawing):
-            graph[i].set_title(f'Face: {i + 1}')
-            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
-            graph[i].clabel(contour_data, fontsize=15)
-            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
-            height_arr = heights_arr[i]
-            width_arr = widths_arr[i]
-            graph[i].set_xlim([0.5, width_arr - 1])
-            graph[i].set_ylim([0.5, height_arr - 1])
-            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
-                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
             if i in [0, 2]:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
+                graph[i].set_xlim([0, breadth])
+                graph[i].set_xticks(ticks=np.arange(0, breadth + 0.1, 0.1))
             else:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
-                graph[i].set_box_aspect(None)
-            if type_fig == 'box':
-                graph[i].set_aspect('equal')
-        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
-        plt.show()
-        plt.close()
+                graph[i].set_xlim([0, depth])
+                graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
 
-    @staticmethod
-    def isofield_std(pressure_coefficients, alpha, model_name, angle):
-        count_sensors_on_model = len(pressure_coefficients[0])
-        pressure_coefficients = np.std(pressure_coefficients, axis=0)
-        min_value, max_value = np.min(pressure_coefficients), np.max(pressure_coefficients)
-        count_sensors_on_middle = int(model_name[0]) * 5
-        count_sensors_on_side = int(model_name[1]) * 5
-        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
-        pressure_coefficients = np.reshape(pressure_coefficients, (count_row, -1))
-        pressure_coefficients = np.split(pressure_coefficients,
-                                         [count_sensors_on_middle,
-                                          count_sensors_on_middle + count_sensors_on_side,
-                                          2 * count_sensors_on_middle + count_sensors_on_side,
-                                          2 * (count_sensors_on_middle + count_sensors_on_side)
-                                          ], axis=1)
-        del pressure_coefficients[4]
-        data_for_drawing = []
-
-        for j in pressure_coefficients:
-            new = []
-            for i in j:
-                new.append(np.append(np.insert(i, 0, i[0]), i[-1]))
-            new.insert(0, new[0])
-            new.append(new[-1])
-            data_for_drawing.append(np.flip(np.array(new), axis=0))
-
-        levels = np.arange(min_value - 0.05, max_value + 0.05, 0.05)
-        levels = [float('%.2f' % i) for i in levels]
-
-        if model_name[0] == model_name[1]:
-            type_fig = 'box'
-        else:
-            type_fig = 'rectangle'
-        heights_arr = []
-        widths_arr = []
-
-        for i in data_for_drawing:
-            heights_arr.append(len(i))
-            widths_arr.append(len(i[0]))
-        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
-        fig, graph = plt.subplots(1, 4, figsize=(16, 9), gridspec_kw={'width_ratios': widths_arr})
-        fig.suptitle('RMS values', fontsize=20, x=0.7, y=0.95)
-        fig.text(0.03, 0.92, f'Model geometrical parameters: H={height}m, B={breadth}m, D={depth}m.\n'
-                             f'Wind field parameters: α = 1\\{alpha}, ϴ = {angle}.', fontsize=16)
-        for i, j in zip(range(4), data_for_drawing):
-            graph[i].set_title(f'Face: {i + 1}')
-            contour_data = graph[i].contour(j, levels=levels, linewidths=1, linestyles='solid', colors='black')
-            graph[i].clabel(contour_data, fontsize=15)
-            data_for_colorbar = graph[i].contourf(j, levels=levels, cmap="jet", extend='max')
-            height_arr = heights_arr[i]
-            width_arr = widths_arr[i]
-            graph[i].set_xlim([0.5, width_arr - 1])
-            graph[i].set_ylim([0.5, height_arr - 1])
-            graph[i].set_yticks(ticks=np.linspace(0.5, height_arr - 1, int(height * 20 + 1)),
-                                labels=map(str, np.round(np.linspace(0, height, int(height * 20 + 1)), 2)))
-            if i in [0, 2]:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(breadth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, breadth, int(breadth * 20 + 1)), 2)))
-            else:
-                graph[i].set_xticks(ticks=np.linspace(0.5, width_arr - 1, int(depth * 20 + 1)),
-                                    labels=map(str, np.round(np.linspace(0, depth, int(depth * 20 + 1)), 2)))
-                graph[i].set_box_aspect(None)
-            if type_fig == 'box':
-                graph[i].set_aspect('equal')
-        fig.colorbar(data_for_colorbar, ax=graph, location='bottom', cmap="jet", ticks=levels)
+        fig.colorbar(data_colorbar, ax=graph, location='bottom', cmap=cmap, ticks=levels)
         plt.show()
         plt.close()
 
     @staticmethod
     def signal(pressure_coefficients, pressure_coefficients1, alpha, model_name, angle):
-
         time = [i / 1000 for i in range(5001)]
         plt.plot(time, [i[0] for i in pressure_coefficients[:5001]], label='113')
         plt.plot(time, [i[0] for i in pressure_coefficients1[:5001]], label='115')
@@ -878,20 +736,20 @@ class Controller:
                 return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][0]
         return pressure_coefficients[0][0]
 
-    def graphs(self, mode, alpha, model_name, angle):
+    def graphs(self, graphic, mode, alpha, model_name, angle):
         """Метод отвечает за вызов графика из класса Artist"""
         angle = int(angle) % 360
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
-        modes_graphs = {
-            'isofield_min': Artist.isofield_min,
-            'isofield_mean': Artist.isofield_mean,
-            'isofield_max': Artist.isofield_max,
-            'isofield_std': Artist.isofield_std,
-            'signal': Artist.signal,
-            'spectrum': Artist.spectrum,
-        }
+        # modes_graphs = {
+        #     'isofield_min': Artist.isofield_min,
+        #     'isofield_mean': Artist.isofield_mean,
+        #     'isofield_max': Artist.isofield_max,
+        #     'isofield_std': Artist.isofield_std,
+        #     'signal': Artist.signal,
+        #     'spectrum': Artist.spectrum,
+        # }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
         # pressure_coefficients1 = np.array(self.get_pressure_coefficients('4', '113', '0')) / 1000
         try:
@@ -899,7 +757,7 @@ class Controller:
         except:
             coordinates = self.get_coordinates(alpha, model_name)
         # modes_graphs[mode](pressure_coefficients, pressure_coefficients1, alpha, model_name, angle)
-        modes_graphs[mode](pressure_coefficients, coordinates, alpha, model_name, angle)
+        Artist.isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle)
 
 
 if __name__ == '__main__':
@@ -917,7 +775,7 @@ if __name__ == '__main__':
     # control.graphs('isofield_mean', '4', '111', '20')
     # control.create_tables()
     # control.fill_db()
-    control.graphs('isofield_mean', '4', '111', '20')
+    control.graphs('isofield', 'std', '4', '112', '30')
     control.disconnect()
     # paths = control.get_paths()
     # import time
