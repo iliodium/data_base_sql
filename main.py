@@ -1,5 +1,6 @@
 import os
 import uuid
+import random
 import psycopg2
 import numpy as np
 import scipy.interpolate
@@ -39,8 +40,9 @@ class Artist:
         return scipy.interpolate.RBFInterpolator(coords, val, kernel='cubic')
 
     @staticmethod
-    def isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle):
+    def isofield(mode, pressure_coefficients, coordinates, integral, alpha, model_name, angle):
         """Отрисовка изополей"""
+        integral_func = []
         mods = {
             'max': np.max(pressure_coefficients, axis=0),
             'mean': np.mean(pressure_coefficients, axis=0),
@@ -159,6 +161,7 @@ class Artist:
             coords = [[i1, j1] for i1, j1 in zip(x_old, z_old)]  # Старые координаты
             # Интерполятор полученный на основе имеющихся данных
             interpolator = Artist.interpolator(coords, data_old)
+            integral_func.append(interpolator)
             # Получаем данные для несуществующих датчиков
             data_new = [float(interpolator([[X, Y]])) for X, Y in zip(x_new, z_new)]
 
@@ -180,8 +183,57 @@ class Artist:
                 graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
 
         fig.colorbar(data_colorbar, ax=graph, location='bottom', cmap=cmap, ticks=levels)
-        plt.show()
+        # plt.show()
         plt.close()
+
+        if integral[0] == -1:
+            return None
+        elif integral[0] == 0:
+            count_zone = count_row
+        else:
+            count_zone = integral[0]
+        ran = random.uniform
+        face1, face2, face3, face4 = [], [], [], []
+        model = face1, face2, face3, face4
+        count_point = integral[1]
+        step_floor = height / count_row
+        for i in range(4):
+            top = step_floor
+            down = 0
+            for _ in range(count_zone):
+                floor = []
+                if i in [0, 2]:
+                    for _ in range(count_point):
+                        floor.append(integral_func[i]([[ran(0, breadth), ran(down, top)]]))
+                else:
+                    for _ in range(count_point):
+                        floor.append(integral_func[i]([[ran(0, depth), ran(down, top)]]))
+                down = top
+                top += step_floor
+                # Обычный метод Монте-Синякина
+                if i in [0, 2]:
+                    model[i].append(sum(floor) * breadth / count_point)
+                else:
+                    model[i].append(sum(floor) * depth / count_point)
+        print(face1)
+        print(face2)
+        print(face3)
+        print(face4)
+
+    @staticmethod
+    def func(x):
+        return 15 * x ** 3 + 21 * x ** 2 + 41 * x + 3 * np.sin(x) * np.cos(x)
+
+    @staticmethod
+    def check():
+        arr = []
+        a = 0
+        b = 5
+        n = 2000000
+        for i in range(n):
+            arr.append(Artist.func(random.uniform(a, b)))
+
+        print(sum(arr) * (b - a) / n)
 
     @staticmethod
     def signal(pressure_coefficients, pressure_coefficients1, alpha, model_name, angle):
@@ -736,7 +788,7 @@ class Controller:
                 return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][0]
         return pressure_coefficients[0][0]
 
-    def graphs(self, graphic, mode, alpha, model_name, angle):
+    def graphs(self, graphic, mode, integtal, alpha, model_name, angle):
         """Метод отвечает за вызов графика из класса Artist"""
         angle = int(angle) % 360
         if angle % 5 != 0:
@@ -757,12 +809,14 @@ class Controller:
         except:
             coordinates = self.get_coordinates(alpha, model_name)
         # modes_graphs[mode](pressure_coefficients, pressure_coefficients1, alpha, model_name, angle)
-        Artist.isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle)
+        Artist.isofield(mode, pressure_coefficients, coordinates, integtal, alpha, model_name, angle)
 
 
 if __name__ == '__main__':
-    control = Controller()
-    control.connect(database='tpu', password='2325070307')
+    Artist.check()
+    # control = Controller()
+    # control.connect(database='tpu', password='2325070307')
+
     # control.create_tables()
     # D:\Projects\mat_to_csv\mat files
     #
@@ -775,8 +829,10 @@ if __name__ == '__main__':
     # control.graphs('isofield_mean', '4', '111', '20')
     # control.create_tables()
     # control.fill_db()
-    control.graphs('isofield', 'std', '4', '112', '30')
-    control.disconnect()
+
+    # control.graphs('isofield', 'mean', [0, 10000], '4', '112', '30')
+    # control.disconnect()
+
     # paths = control.get_paths()
     # import time
     # users = dict()

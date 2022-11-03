@@ -1,7 +1,11 @@
 
-|python:S116Ü"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(’¿Ş†
-Mpython:S1172ã"/Remove the unused function parameter "graphic".(Î½Šôıÿÿÿÿ
-7python:S125é"Remove this commented out code.(©÷€¹
-Upython:S5754õ"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
-<python:S125ò"Remove this commented out code.(ÔîÑÄÿÿÿÿÿ
-<python:S125Œ"Remove this commented out code.(â ¯Üúÿÿÿÿ
+lpython:S3776+"TRefactor this function to reduce its Cognitive Complexity from 34 to the 15 allowed.(íÿë¬
+Cpython:S1481é"%Remove the unused local variable "i".(ñğ‹®úÿÿÿÿ
+|python:S116"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(’¿Ş†
+Hpython:S1172—"/Remove the unused function parameter "graphic".(é­Èæ
+7python:S125"Remove this commented out code.(©÷€¹
+Upython:S5754©"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+<python:S125¦"Remove this commented out code.(ÔîÑÄÿÿÿÿÿ
+Cpython:S125±"Remove this commented out code.(şµ«úÿÿÿÿ8üá¾ûÃ0
+>python:S125Á"Remove this commented out code.(£ã“À8ıá¾ûÃ0
+Cpython:S125Ä"Remove this commented out code.(â ¯Üúÿÿÿÿ8ö½ûÃ0
