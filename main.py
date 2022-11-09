@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 
 from psycopg2 import Error
 from scipy.fft import fft, rfftfreq
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Artist:
@@ -151,6 +153,7 @@ class Artist:
         cmap = cm.get_cmap(name="jet")
         data_colorbar = None
         data_old_integer = []  # данные для дискретного интегрирования по осям
+        data_for_3d_model = []  # данные для 3D модели
         for i in range(4):
             # x это координаты по ширине
             x_new = x_extended[i].reshape(1, -1)[0]
@@ -180,62 +183,61 @@ class Artist:
             triang = mtri.Triangulation(x_new, z_new)
             refiner = mtri.UniformTriRefiner(triang)
             grid, value = refiner.refine_field(data_new, subdiv=4)
-
-            data_colorbar = graph[i].tricontourf(grid, value, cmap=cmap, levels=levels, extend='both')
-            aq = graph[i].tricontour(grid, value, linewidths=1, linestyles='solid', colors='black', levels=levels)
-
-            graph[i].clabel(aq, fontsize=13)
-            graph[i].set_ylim([0, height])
-            if breadth == depth == height:
-                graph[i].set_aspect('equal')
-            if i in [0, 2]:
-                graph[i].set_xlim([0, breadth])
-                graph[i].set_xticks(ticks=np.arange(0, breadth + 0.1, 0.1))
-            else:
-                graph[i].set_xlim([0, depth])
-                graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
-            ret_int.append(interpolator)
-        fig.colorbar(data_colorbar, ax=graph, location='bottom', cmap=cmap, ticks=levels)
+            data_for_3d_model.append((grid, value))
+        #     data_colorbar = graph[i].tricontourf(grid, value, cmap=cmap, levels=levels, extend='both')
+        #     aq = graph[i].tricontour(grid, value, linewidths=1, linestyles='solid', colors='black', levels=levels)
+        #
+        #     graph[i].clabel(aq, fontsize=13)
+        #     graph[i].set_ylim([0, height])
+        #     if breadth == depth == height:
+        #         graph[i].set_aspect('equal')
+        #     if i in [0, 2]:
+        #         graph[i].set_xlim([0, breadth])
+        #         graph[i].set_xticks(ticks=np.arange(0, breadth + 0.1, 0.1))
+        #     else:
+        #         graph[i].set_xlim([0, depth])
+        #         graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
+        #     ret_int.append(interpolator)
+        # fig.colorbar(data_colorbar, ax=graph, location='bottom', cmap=cmap, ticks=levels)
         # plt.show()
         plt.close()
-        print(data_old_integer)
-        return ret_int
-        # Численное интегрирование
-
-        if integral[0] == -1:
-            return None
-        elif integral[0] == 0:
-            count_zone = count_row
-        else:
-            count_zone = integral[0]
-        ran = random.uniform
-        face1, face2, face3, face4 = [], [], [], []
-        model = face1, face2, face3, face4
-        count_point = integral[1]
-        step_floor = height / count_row
-        for i in range(4):
-            top = step_floor
-            down = 0
-            for _ in range(count_zone):
-                floor = []
-                if i in [0, 2]:
-                    for _ in range(count_point):
-                        floor.append(integral_func[i]([[ran(0, breadth), ran(down, top)]]))
-                else:
-                    for _ in range(count_point):
-                        floor.append(integral_func[i]([[ran(0, depth), ran(down, top)]]))
-                down = top
-                top += step_floor
-                # Обычный метод Монте-Синякина
-                if i in [0, 2]:
-                    model[i].append(sum(floor) * breadth / count_point)
-                else:
-                    model[i].append(sum(floor) * depth / count_point)
-        print(face1)
-        print(face2)
-        print(face3)
-        print(face4)
-
+        isofield_model().show(data_for_3d_model, levels)
+        # return ret_int
+        # # Численное интегрирование
+        #
+        # if integral[0] == -1:
+        #     return None
+        # elif integral[0] == 0:
+        #     count_zone = count_row
+        # else:
+        #     count_zone = integral[0]
+        # ran = random.uniform
+        # face1, face2, face3, face4 = [], [], [], []
+        # model = face1, face2, face3, face4
+        # count_point = integral[1]
+        # step_floor = height / count_row
+        # for i in range(4):
+        #     top = step_floor
+        #     down = 0
+        #     for _ in range(count_zone):
+        #         floor = []
+        #         if i in [0, 2]:
+        #             for _ in range(count_point):
+        #                 floor.append(integral_func[i]([[ran(0, breadth), ran(down, top)]]))
+        #         else:
+        #             for _ in range(count_point):
+        #                 floor.append(integral_func[i]([[ran(0, depth), ran(down, top)]]))
+        #         down = top
+        #         top += step_floor
+        #         # Обычный метод Монте-Синякина
+        #         if i in [0, 2]:
+        #             model[i].append(sum(floor) * breadth / count_point)
+        #         else:
+        #             model[i].append(sum(floor) * depth / count_point)
+        # print(face1)
+        # print(face2)
+        # print(face3)
+        # print(face4)
 
     @staticmethod
     def func(x):
@@ -257,6 +259,14 @@ class Artist:
         time = [i / 1000 for i in range(5001)]
         plt.plot(time, [i[0] for i in pressure_coefficients[:5001]], label='113')
         plt.plot(time, [i[0] for i in pressure_coefficients1[:5001]], label='115')
+        plt.legend()
+        plt.show()
+
+    @staticmethod
+    def signal1(pressure_coefficients, pressure_coefficients_2):
+        time = [i / 1000 for i in range(len(pressure_coefficients))]
+        plt.plot(time, [i[206] for i in pressure_coefficients], label='old')
+        plt.plot(time, pressure_coefficients_2, label='new')
         plt.legend()
         plt.show()
 
@@ -286,7 +296,7 @@ class Controller:
     __connection = None
     __path_database = None
     __path_database = 'D:\Projects\mat_to_csv\mat files'
-    __extrapolatedAnglesInfoList = {}  # ключ вида T<model_name>_<alpha>_<angle>, значения (коэффициенты, x, y, z)
+    __extrapolatedAnglesInfoList = {}  # ключ вида T<model_name>_<alpha>_<angle>, значения (коэффициенты, x, z)
 
     def __init__(self):
         self.cursor = None
@@ -805,7 +815,7 @@ class Controller:
                 return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][0]
         return pressure_coefficients[0][0]
 
-    def graphs(self, graphic, mode, integtal, alpha, model_name, angle):
+    def graphs(self, graphic, mode, integtal, alpha, model_name, angle, new_signal):
         """Метод отвечает за вызов графика из класса Artist"""
         angle = int(angle) % 360
         if angle % 5 != 0:
@@ -820,40 +830,173 @@ class Controller:
         #     'spectrum': Artist.spectrum,
         # }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+        Artist.signal1(pressure_coefficients,new_signal)
         # pressure_coefficients1 = np.array(self.get_pressure_coefficients('4', '113', '0')) / 1000
-        try:
-            coordinates = self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][1:]
-        except:
-            coordinates = self.get_coordinates(alpha, model_name)
-        # modes_graphs[mode](pressure_coefficients, pressure_coefficients1, alpha, model_name, angle)
-        return Artist.isofield(mode, pressure_coefficients, coordinates, integtal, alpha, model_name, angle)
+        # try:
+        #     coordinates = self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][1:]
+        # except:
+        #     coordinates = self.get_coordinates(alpha, model_name)
+        # # modes_graphs[mode](pressure_coefficients, pressure_coefficients1, alpha, model_name, angle)
+        # return Artist.isofield(mode, pressure_coefficients, coordinates, integtal, alpha, model_name, angle)
+
+    def generate_signal(self, alpha, model_name, angle, x_gen, z_gen):
+        new_signal = []
+        pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+        x, z = self.get_coordinates(alpha, model_name)
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        count_sensors_on_model = len(pressure_coefficients[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        face = -1
+        if 0 <= x_gen <= breadth:
+            face = 0
+        elif breadth < x_gen <= (breadth + depth):
+            face = 1
+            x_gen -= breadth
+
+        elif (breadth + depth) < x_gen <= (2 * breadth + depth):
+            face = 2
+            x_gen -= (breadth + depth)
+
+        else:
+            face = 3
+            x_gen -= (2 * breadth + depth)
+
+        x = np.reshape(x, (count_row, -1))
+        x = np.split(x, [count_sensors_on_middle,
+                         count_sensors_on_middle + count_sensors_on_side,
+                         2 * count_sensors_on_middle + count_sensors_on_side,
+                         2 * (count_sensors_on_middle + count_sensors_on_side)
+                         ], axis=1)
+
+        z = np.reshape(z, (count_row, -1))
+        z = np.split(z, [count_sensors_on_middle,
+                         count_sensors_on_middle + count_sensors_on_side,
+                         2 * count_sensors_on_middle + count_sensors_on_side,
+                         2 * (count_sensors_on_middle + count_sensors_on_side)
+                         ], axis=1)
+
+        del x[4]
+        del z[4]
+
+        for i in range(4):
+            x[i] = x[i].tolist()
+            z[i] = z[i].tolist()
+
+        # x1...x4 координаты отдельных граней
+        x1, x2, x3, x4 = x  # x это тензор со всеми координатами граней по ширине
+        # z1...z4 координаты отдельных граней
+        z1, z2, z3, z4 = z  # z это тензор со всеми координатами граней по высоте
+
+        x = [np.array(x1), np.array(x2), np.array(x3), np.array(x4)]  # Входные координаты для изополей
+        z = [np.array(z1), np.array(z2), np.array(z3), np.array(z4)]  # Входные координаты для изополей
+
+        # x это координаты по ширине
+        x_old = x[face].reshape(1, -1)[0]
+        # Вычитаем чтобы все координаты по x находились в интервале [0, 1]
+        if face == 1:
+            x_old -= breadth
+        elif face == 2:
+            x_old -= (breadth + depth)
+        elif face == 3:
+            x_old -= (2 * breadth + depth)
+        # z это координаты по высоте
+        z_old = z[face].reshape(1, -1)[0]
+        coords = [[i1, j1] for i1, j1 in zip(x_old, z_old)]  # Старые координаты
+
+        for ind in range(len(pressure_coefficients)):
+            coefficient = pressure_coefficients[ind]
+
+            coefficient = np.reshape(coefficient, (count_row, -1))
+            coefficient = np.split(coefficient, [count_sensors_on_middle,
+                                                 count_sensors_on_middle + count_sensors_on_side,
+                                                 2 * count_sensors_on_middle + count_sensors_on_side,
+                                                 2 * (
+                                                         count_sensors_on_middle + count_sensors_on_side)
+                                                 ], axis=1)
+            del coefficient[4]
+            data_old = coefficient[face].reshape(1, -1)[0]
+            # Интерполятор полученный на основе имеющихся данных
+            interpolator = Artist.interpolator(coords, data_old)
+            new_signal.append(float(interpolator([[x_gen, z_gen]])))
+
+        return new_signal
+
+
+# class isofield_model:
+#
+#     def show(self, data, levels):
+#         import numpy as np
+#         import matplotlib.pyplot as plt
+#         from mpl_toolkits.mplot3d import Axes3D
+#         import matplotlib.colors
+#         ax = plt.figure().add_subplot(projection='3d')
+#
+#         for i in range(len(data)):
+#             grid, value = data[i]
+#             colors = plt.cm.get_cmap("jet", N - 1)(np.arange(N - 1))
+#             cmap, norm = matplotlib.colors.from_levels_and_colors(levels, colors)
+#             color_vals = cmap(norm(c))
+#             if i == 0:
+#                 # ax.tricontourf(grid, value,zdir='x', cmap='jet', levels=levels, extend='both')
+#                 ax.tricontour(grid, value, zs=1, zdir='z', linewidths=1, linestyles='solid', colors='black',
+#                               levels=levels)
+#             # elif i == 1:
+#             #     ax.tricontourf(grid, value, zdir='x', cmap='jet', levels=levels, extend='both')
+#             #     ax.tricontour(grid, value, zdir='x', linewidths=1, linestyles='solid', colors='black',
+#             #                   levels=levels)
+#             # # elif i == 2:
+#             #     ax.tricontourf(grid, value, zdir='y', cmap='jet', levels=levels, extend='both')
+#             #     ax.tricontour(grid, value, zdir='y', linewidths=1, linestyles='solid', colors='black',
+#             #                   levels=levels)
+#             # else:
+#             #     ax.tricontourf(grid, value, zdir='y', cmap='jet', levels=levels, extend='both')
+#             #     ax.tricontour(grid, value, zdir='y', linewidths=1, linestyles='solid', colors='black',
+#             #                   levels=levels)
+#
+#         # # Plot a sin curve using the x and y axes.
+#         # x = np.linspace(0, 1, 100)
+#         # y = np.sin(x * 2 * np.pi) / 2 + 0.5
+#         # ax.plot(x, y, zs=0, zdir='x', label='curve in (x, y)1')
+#         #
+#         # x = np.linspace(0, 1, 100)
+#         # y = np.sin(x * 2 * np.pi) / 2 + 0.5
+#         # ax.plot(x, y, zs=1, zdir='x', label='curve in (x, y)1')
+#         #
+#         # x = np.linspace(0, 1, 100)
+#         # y = np.sin(x * 2 * np.pi) / 2 + 0.5
+#         # ax.plot(x, y, zs=0, zdir='y', label='curve in (x, y)2')
+#         #
+#         # x = np.linspace(0, 1, 100)
+#         # y = np.sin(x * 2 * np.pi) / 2 + 0.5
+#         # ax.plot(x, y, zs=1, zdir='y', label='curve in (x, y)2')
+#
+#         ax.legend()
+#         ax.set_xlabel('X')
+#         ax.set_ylabel('Y')
+#         ax.set_zlabel('Z')
+#         plt.show()
 
 
 if __name__ == '__main__':
     control = Controller()
     control.connect(database='tpu', password='2325070307')
 
-    # control.create_tables()
-    # D:\Projects\mat_to_csv\mat files
+    # # control.create_tables()
+    # # D:\Projects\mat_to_csv\mat files
+    # # control.create_tables()
+    # # control.fill_db()
     #
-    # control.generate_not_exists_case('4', '111', '65')
-    # control.graphs('isofield_mean', '4', '111', '0')
-    # control.graphs('isofield_mean', '4', '112', '0')
-    # control.graphs('isofield_mean', '4', '113', '0')
-    # control.graphs('isofield_mean', '4', '114', '0')
-    # control.get_coordinates(4, 313)
-    # control.graphs('isofield_mean', '4', '111', '20')
-    # control.create_tables()
-    # control.fill_db()
-
-    # int_1 = control.graphs('isofield', 'mean', [-1, 10000], '4', '115', '0')
-    # int_2 = control.graphs('isofield', 'mean', [-1, 1], '4', '114', '0')
-
-    control.graphs('isofield', 'mean', [-1, 1], '4', '114', '0')
+    # # int_1 = control.graphs('isofield', 'mean', [-1, 10000], '4', '115', '0')
+    # # int_2 = control.graphs('isofield', 'mean', [-1, 1], '4', '114', '0')
+    #
+    # control.graphs('isofield', 'mean', [-1, 1], '4', '114', '0')
+    # control.graphs('signal', 'mean', [-1, 1], '4', '114', '0')
+    new_signal = control.generate_signal('4', '114', '0', 0.14, 0.19)
+    control.graphs('signal', 'mean', [-1, 1], '4', '114', '0', new_signal)
 
     control.disconnect()
-
-
 
     # x1 = [[[0.01, 0.03, 0.05, 0.07, 0.09], [0.01, 0.03, 0.05, 0.07, 0.09], [0.01, 0.03, 0.05, 0.07, 0.09],
     #        [0.01, 0.03, 0.05, 0.07, 0.09], [0.01, 0.03, 0.05, 0.07, 0.09], [0.01, 0.03, 0.05, 0.07, 0.09],
