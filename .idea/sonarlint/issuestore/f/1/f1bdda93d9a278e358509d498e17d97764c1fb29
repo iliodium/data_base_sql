@@ -1,14 +1,0 @@
-
-Opython:S1481š"1Remove the unused local variable "data_colorbar".(û¡›Àüÿÿÿÿ
-Fpython:S1481™"(Remove the unused local variable "cmap".(È°­Êşÿÿÿÿ
-Hpython:S1481r"+Remove the unused local variable "ret_int".(ŠŠÆ´úÿÿÿÿ
-Cpython:S1481ü"%Remove the unused local variable "i".(ñğ‹®úÿÿÿÿ
-|python:S116«"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ÿ¨äÄ
-Mpython:S1172²"/Remove the unused function parameter "graphic".(®èöúÿÿÿÿ
-Jpython:S1172²",Remove the unused function parameter "mode".(®èöúÿÿÿÿ
-Npython:S1172²"0Remove the unused function parameter "integtal".(®èöúÿÿÿÿ
-Opython:S1481¸"0Remove the unused local variable "modes_graphs".(ê»·E8åæûÆ0
-<python:S125Â"Remove this commented out code.(ÔîÑÄÿÿÿÿÿ
-<python:S125Ÿ"Remove this commented out code.(Àó»¬úÿÿÿÿ
-7python:S125é"Remove this commented out code.(ÿÉÂ¥
-<python:S125é	"Remove this commented out code.(â ¯Üúÿÿÿÿ
