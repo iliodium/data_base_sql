@@ -821,14 +821,14 @@ class Controller:
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
-        # modes_graphs = {
-        #     'isofield_min': Artist.isofield_min,
-        #     'isofield_mean': Artist.isofield_mean,
-        #     'isofield_max': Artist.isofield_max,
-        #     'isofield_std': Artist.isofield_std,
-        #     'signal': Artist.signal,
-        #     'spectrum': Artist.spectrum,
-        # }
+        modes_graphs = {
+            'isofield_min': Artist.isofield_min,
+            'isofield_mean': Artist.isofield_mean,
+            'isofield_max': Artist.isofield_max,
+            'isofield_std': Artist.isofield_std,
+            'signal': Artist.signal,
+            'spectrum': Artist.spectrum,
+        }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
         Artist.signal1(pressure_coefficients,new_signal)
         # pressure_coefficients1 = np.array(self.get_pressure_coefficients('4', '113', '0')) / 1000
