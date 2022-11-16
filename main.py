@@ -164,7 +164,7 @@ class Artist:
                 graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
 
         qqq = 0
-        for pressure_coefficients in coeffs:
+        for pressure_coefficients in coeffs[:300]:
             qqq += 1
             print(qqq)
 
@@ -201,7 +201,7 @@ class Artist:
         plt.close()
 
     @staticmethod
-    def isofield(mode, pressure_coefficients, coordinates, integral, alpha, model_name, angle):
+    def isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle):
         """Отрисовка изополей"""
         integral_func = []
         mods = {
@@ -222,15 +222,15 @@ class Artist:
         #  Шаг для изополей и контурных линий
         levels = np.arange(np.round(min_v, 1), np.round(max_v, 1) + 0.1, steps[mode])
         x, z = np.array(coordinates)
-        if integral[1] == 1:
-            # Масштабирование
-            print(model_name, 1.25)
-            k = 1.25  # коэффициент масштабирования по высоте
-            z *= k
-        else:
-            k = 1
-            print(model_name, 1)
-        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10 * k
+        # if integral[1] == 1:
+        #     # Масштабирование
+        #     print(model_name, 1.25)
+        #     k = 1.25  # коэффициент масштабирования по высоте
+        #     z *= k
+        # else:
+        #     k = 1
+        #     print(model_name, 1)
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
         count_sensors_on_model = len(pressure_coefficients)
         count_sensors_on_middle = int(model_name[0]) * 5
         count_sensors_on_side = int(model_name[1]) * 5
@@ -309,8 +309,8 @@ class Artist:
         fig, graph = plt.subplots(1, 4)
         cmap = cm.get_cmap(name="jet")
         data_colorbar = None
-        data_old_integer = []  # данные для дискретного интегрирования по осям
-        data_for_3d_model = []  # данные для 3D модели
+        # data_old_integer = []  # данные для дискретного интегрирования по осям
+        # data_for_3d_model = []  # данные для 3D модели
         for i in range(4):
             # x это координаты по ширине
             x_new = x_extended[i].reshape(1, -1)[0]
@@ -329,7 +329,7 @@ class Artist:
             z_new = z_extended[i].reshape(1, -1)[0]
             z_old = z[i].reshape(1, -1)[0]
             data_old = pressure_coefficients[i].reshape(1, -1)[0]
-            data_old_integer.append(data_old)
+            # data_old_integer.append(data_old)
             coords = [[i1, j1] for i1, j1 in zip(x_old, z_old)]  # Старые координаты
             # Интерполятор полученный на основе имеющихся данных
             interpolator = Artist.interpolator(coords, data_old)
@@ -340,7 +340,7 @@ class Artist:
             triang = mtri.Triangulation(x_new, z_new)
             refiner = mtri.UniformTriRefiner(triang)
             grid, value = refiner.refine_field(data_new, subdiv=4)
-            data_for_3d_model.append((grid, value))
+            # data_for_3d_model.append((grid, value))
             data_colorbar = graph[i].tricontourf(grid, value, cmap=cmap, levels=levels, extend='both')
             aq = graph[i].tricontour(grid, value, linewidths=1, linestyles='solid', colors='black', levels=levels)
 
@@ -355,11 +355,11 @@ class Artist:
                 graph[i].set_xlim([0, depth])
                 graph[i].set_xticks(ticks=np.arange(0, depth + 0.1, 0.1))
             ret_int.append(interpolator)
-            graph[i].axis('off')
+            # graph[i].axis('off')
         fig.colorbar(data_colorbar, ax=graph, location='bottom', cmap=cmap, ticks=levels)
 
-        plt.savefig('plot')
-        plt.show()
+        plt.savefig(f'{folder_out}\\isofield {model_name}_{alpha} {mode}')
+        # plt.show()
         plt.clf()
         plt.close()
         # isofield_model().show(data_for_3d_model, levels)
@@ -976,30 +976,19 @@ class Controller:
                 return self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][0]
         return pressure_coefficients[0][0]
 
-    def graphs(self, graphic, mode, integtal, alpha, model_name, angle, new_signal = None):
+    def graphs(self, mode, alpha, model_name, angle):
         """Метод отвечает за вызов графика из класса Artist"""
         angle = int(angle) % 360
         if angle % 5 != 0:
             print('Углы должны быть кратны 5')
             return None
-        # modes_graphs = {
-        #     'isofield_min': Artist.isofield_min,
-        #     'isofield_mean': Artist.isofield_mean,
-        #     'isofield_max': Artist.isofield_max,
-        #     'isofield_std': Artist.isofield_std,
-        #     'signal': Artist.signal,
-        #     'spectrum': Artist.spectrum,
-        # }
         pressure_coefficients = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
-        # Artist.signal1(pressure_coefficients,new_signal)
-        # pressure_coefficients1 = np.array(self.get_pressure_coefficients('4', '113', '0')) / 1000
         try:
             coordinates = self.__extrapolatedAnglesInfoList[f'T{model_name}_{alpha}_{angle:03d}'][1:]
         except:
             coordinates = self.get_coordinates(alpha, model_name)
-        Artist.film(pressure_coefficients, coordinates, model_name)
-        # modes_graphs[mode](pressure_coefficients, alpha, model_name, angle)
-        # return Artist.isofield(mode, pressure_coefficients, coordinates, integtal, alpha, model_name, angle)
+
+        return Artist.isofield(mode, pressure_coefficients, coordinates, alpha, model_name, angle)
 
     def generate_signal(self, alpha, model_name, angle, x_gen, z_gen):
         new_signal = []
@@ -1085,10 +1074,183 @@ class Controller:
 
         return new_signal
 
+    def graphic_mean(self, alpha, model_name, angle):
+        pr_norm = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+        count_sensors_on_model = len(pr_norm[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+
+        sum_int_x = []
+        sum_int_y = []
+
+        for coeff in pr_norm:
+            coeff = np.reshape(coeff, (count_row, -1))
+            coeff = np.split(coeff, [count_sensors_on_middle,
+                                     count_sensors_on_middle + count_sensors_on_side,
+                                     2 * count_sensors_on_middle + count_sensors_on_side,
+                                     2 * (count_sensors_on_middle + count_sensors_on_side)
+                                     ], axis=1)
+            del coeff[4]
+            faces_x = []
+            faces_y = []
+            for face in range(len(coeff)):
+                if face in [0, 2]:
+                    faces_x.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+                else:
+                    faces_y.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+
+            sum_int_x.append((faces_x[0] - faces_x[1]))
+            sum_int_y.append((faces_y[0] - faces_y[1]))
+        print(f"""
+                среднее по Cy
+                {sum(sum_int_y) / 32768}
+                среднее по Cx
+                {sum(sum_int_x) / 32768}
+                """)
+        print(f"""
+                стандартное откл по Cx
+                {np.std(sum_int_x)}
+                стандартное откл по Cy
+                {np.std(sum_int_y)}
+                """)
+        fig, graph = plt.subplots(1, 2, figsize=(16, 9))
+        graph[0].plot(list(range(1, 32769)), sum_int_x, label='Cx')
+        graph[1].plot(list(range(1, 32769)), sum_int_y, label='Cy')
+        for i in range(2):
+            graph[i].legend()
+            graph[i].grid()
+        plt.savefig(f'{folder_out}\\график средних {model_name}_{alpha}')
+        plt.clf()
+        plt.close()
+
+    def spectr_mean(self, alpha, model_name, angle, border):
+        pr_norm = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+        count_sensors_on_model = len(pr_norm[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+
+        sum_int_x = []
+        sum_int_y = []
+
+        for coeff in pr_norm:
+            coeff = np.reshape(coeff, (count_row, -1))
+            coeff = np.split(coeff, [count_sensors_on_middle,
+                                     count_sensors_on_middle + count_sensors_on_side,
+                                     2 * count_sensors_on_middle + count_sensors_on_side,
+                                     2 * (count_sensors_on_middle + count_sensors_on_side)
+                                     ], axis=1)
+            del coeff[4]
+            faces_x = []
+            faces_y = []
+            for face in range(len(coeff)):
+                if face in [0, 2]:
+                    faces_x.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+                else:
+                    faces_y.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+
+            sum_int_x.append((faces_x[0] - faces_x[1]))
+            sum_int_y.append((faces_y[0] - faces_y[1]))
+        N = len(sum_int_x)
+
+        yfCx = (1 / N) * (np.abs(fft(sum_int_x)))[1:N // 2]
+        yfCy = (1 / N) * (np.abs(fft(sum_int_y)))[1:N // 2]
+
+        FD = 1000
+        xf = rfftfreq(N, 1 / FD)[1:N // 2]
+
+        fig, graph = plt.subplots(1, 2, figsize=(16, 9))
+        if border==-1:
+            border=100000
+
+        graph[0].plot(xf[:border], yfCx[:border], antialiased=True, label='Cx')
+        graph[1].plot(xf[:border], yfCy[:border], antialiased=True, label='Cy')
+        for i in range(2):
+            graph[i].legend()
+            graph[i].grid()
+
+        plt.savefig(f'{folder_out}\\спектр средних {model_name}_{alpha}')
+        plt.clf()
+        plt.close()
+
 
 if __name__ == '__main__':
     control = Controller()
+    # пароль 08101430
     control.connect(database='tpu', password='2325070307')
-    control.graphs('isofild', 'mean', [-1, 1], '4', '114', '0')
+    while True:
+        command = input("""
+        1
+            - изополя
+            - спектры
+            - средние
+                - графики
+                - значения
+            - стандартное откл
+        2
+            - изополя
+        3
+            - графики средних
+            - значения средних
+            - стандартное откл
+        4
+            - спектры средних
 
+        1 например:
+        1 114 6 30 700
+        режим, параметр BDH, альфа, угол, до какого значения обрезать спектры
+        
+        2 например
+        2 113 4 0 std
+        если нужно конкретное изополе ввести режим:
+            - min
+            - max
+            - mean
+            - std
+        если нужны все, то all
+        2 113 4 0 all
+        
+        3 например
+        3 111 4 0
+        
+        4 например
+        4 115 4 0 157
+        чтобы отобразить весь спектр последний параметр должен быть -1
+        """)
+
+        command = command.split()
+
+        try:
+            global folder_out
+            folder_out = f'режим {" ".join(map(str, command))}'
+            os.mkdir(folder_out)
+
+        except:
+            print('Уже существует')
+            break
+        model_name = command[1]
+        alpha = command[2]
+        angle = command[3]
+        match command[0]:
+
+            case '1':
+                for mode in ('max', 'mean', 'min', 'std'):
+                    control.graphs(mode, alpha, model_name, angle)
+                control.graphic_mean(alpha, model_name, angle)
+                border = int(command[-1])
+                control.spectr_mean(alpha, model_name, angle, border)
+            case '2':
+                if command[-1] == 'all':
+                    for mode in ('max', 'mean', 'min', 'std'):
+                        control.graphs(mode, alpha, model_name, angle)
+                else:
+                    control.graphs(command[-1], alpha, model_name, angle)
+            case '3':
+                control.graphic_mean(alpha, model_name, angle)
+            case '4':
+                border = int(command[-1])
+                control.spectr_mean(alpha, model_name, angle, border)
+
+        break
     control.disconnect()
