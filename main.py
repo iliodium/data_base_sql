@@ -1127,7 +1127,7 @@ class Controller:
         plt.clf()
         plt.close()
 
-    def spectr_mean(self, alpha, model_name, angle, border):
+    def spectr_mean(self, alpha, model_name, angle = 0, border = 30000):
         pr_norm = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
         count_sensors_on_model = len(pr_norm[0])
         count_sensors_on_middle = int(model_name[0]) * 5
@@ -1239,7 +1239,7 @@ class Controller:
             yticks = np.arange(np.min(min_pr), np.max(max_pr) + 0.2, 0.2).round(2)
             ax.set_xticks(xticks)
             ax.set_yticks(yticks)
-            ax.set_xlim(0, count_sensors)п
+            ax.set_xlim(0, count_sensors + 1)
             ax.set_ylim(np.min(yticks), np.max(yticks))
             ax.legend()
             ax.grid()
@@ -1315,11 +1315,12 @@ class Controller:
         info_sum_coeff = []
         sum_int_x, sum_int_y = self.get_sum_coeff(alpha, model_name)
         fig, ax = plt.subplots(figsize=(7, 6), dpi=200, num=1, clear=True)
-        ox = list(range(1, 32769))
+        ox = np.linspace(0, 32.768, 32768)
         for data, name in zip([sum_int_x, sum_int_y], ["CX", "CY"]):
             ax.plot(ox, data, label=name)
             ax.legend()
             ax.grid()
+            ax.set_xlim(0, 32.768)
             plt.savefig(f'Отчет {model_name}_{alpha}\\{name} {model_name}_{alpha}.png')
             ax.clear()
             info_sum_coeff.append([
@@ -1336,6 +1337,61 @@ class Controller:
 
         return info_sum_coeff
 
+    def spectr_sum_report(self, alpha, model_name):
+        pr_norm = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
+        count_sensors_on_model = len(pr_norm[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+
+        sum_int_x = []
+        sum_int_y = []
+
+        for coeff in pr_norm:
+            coeff = np.reshape(coeff, (count_row, -1))
+            coeff = np.split(coeff, [count_sensors_on_middle,
+                                     count_sensors_on_middle + count_sensors_on_side,
+                                     2 * count_sensors_on_middle + count_sensors_on_side,
+                                     2 * (count_sensors_on_middle + count_sensors_on_side)
+                                     ], axis=1)
+            del coeff[4]
+            faces_x = []
+            faces_y = []
+            for face in range(len(coeff)):
+                if face in [0, 2]:
+                    faces_x.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+                else:
+                    faces_y.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+
+            sum_int_x.append((faces_x[0] - faces_x[1]))
+            sum_int_y.append((faces_y[0] - faces_y[1]))
+        N = len(sum_int_x)
+
+        yfCx = (1 / N) * (np.abs(fft(sum_int_x)))[1:N // 2]
+        yfCy = (1 / N) * (np.abs(fft(sum_int_y)))[1:N // 2]
+
+        FD = 1000
+        xf = rfftfreq(N, 1 / FD)[1:N // 2]
+
+        border = 500
+        count_peaks = 2
+
+        fig, ax = plt.subplots(figsize=(12, 6), dpi=200, num=1, clear=True)
+
+        for data, name in zip([yfCx, yfCy], ['Cx', 'Cy']):
+            ax.plot(xf[:border], data[:border], antialiased=True, label=name)
+            peaks = np.sort(data[:border])[::-1][:count_peaks]
+
+            for peak in range(count_peaks):
+                x = xf[:border][np.where(data[:border] == peaks[peak])].round(3)[0]
+                y = peaks[peak]
+                ax.annotate(x, xy=(x, y))
+
+            ax.legend()
+            ax.grid()
+            plt.savefig(f'Отчет {model_name}_{alpha}\\Спектр {name} {model_name}_{alpha}.png')
+            ax.clear()
+
     def generate_report(self, alpha, model_name):
         counter = 0
         doc = Document()
@@ -1346,13 +1402,13 @@ class Controller:
         doc.add_paragraph().add_run('1. Параметры здания').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        self.generate_model_pic(alpha, model_name)
+        # self.generate_model_pic(alpha, model_name)
         doc.add_picture(f'Отчет {model_name}_{alpha}\\Модель {model_name}_{alpha}.png')
         counter += 1
         doc.add_paragraph().add_run('2. Статистика по датчиках. Максимумы и огибающие').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        self.generate_envelopes(alpha, model_name)
+        # self.generate_envelopes(alpha, model_name)
         envelopes = glob.glob(f'Отчет {model_name}_{alpha}\\Огибающие *.png')
         for env in envelopes:
             doc.add_picture(env)
@@ -1470,6 +1526,16 @@ class Controller:
         hdr_cells = table_4.rows[0].cells
         for i in range(len(header_4)):
             hdr_cells[i].add_paragraph().add_run(header_4[i]).font.size = Pt(8)
+
+        self.spectr_sum_report(alpha, model_name)
+
+        doc.add_paragraph().add_run('7. Спектры').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for name in ('Cx', 'Cy'):
+            doc.add_picture(f'Отчет {model_name}_{alpha}\\Спектр {name} {model_name}_{alpha}.png')
+            counter += 1
+            doc.paragraphs[counter].add_run(f'\nСпектр {name} {model_name}_{alpha}').font.size = Pt(12)
 
         doc.save(f'Отчет {model_name}_{alpha}\\Отчет {model_name}_{alpha}.docx')
 
