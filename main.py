@@ -1277,8 +1277,19 @@ class Controller:
         min_pr = np.min(pr_coeff, axis=0).round(4)
 
         for i in range(sensors_on_model):
-            row = [i + 1, x_new[i], y_new[i], z[i], mean_pr[i], rms_pr[i], std_pr[i], max_pr[i], min_pr[i], None, None,
-                   None]
+            row = [i + 1,
+                   x_new[i],
+                   y_new[i],
+                   z[i],
+                   mean_pr[i],
+                   rms_pr[i],
+                   std_pr[i],
+                   max_pr[i],
+                   min_pr[i],
+                   np.max([np.abs(min_pr[i]), np.abs(max_pr[i])]).round(2),
+                   (np.abs(max_pr[i] - mean_pr[i]) / std_pr[i]).round(2),
+                   (np.abs(min_pr[i] - mean_pr[i]) / std_pr[i]).round(2)
+                   ]
             info_sensors.append(row)
         return info_sensors
 
@@ -1323,16 +1334,20 @@ class Controller:
             ax.set_xlim(0, 32.768)
             plt.savefig(f'Отчет {model_name}_{alpha}\\{name} {model_name}_{alpha}.png')
             ax.clear()
+            max_pr = np.max(data).round(2)
+            mean_pr = np.mean(data).round(2)
+            min_pr = np.min(data).round(2)
+            std_pr = np.std(data).round(2)
             info_sum_coeff.append([
                 name,
-                np.mean(data).round(2),
+                mean_pr,
                 np.sqrt(np.array(data).dot(np.array(data)) / np.array(data).size).round(2),
-                np.std(data).round(2),
-                np.max(data).round(2),
-                np.min(data).round(2),
-                None,
-                None,
-                None
+                std_pr,
+                max_pr,
+                min_pr,
+                np.max([np.abs(min_pr), np.abs(max_pr)]).round(2),
+                (np.abs(max_pr - mean_pr) / std_pr).round(2),
+                (np.abs(min_pr - mean_pr) / std_pr).round(2)
             ])
 
         return info_sum_coeff
@@ -1402,13 +1417,13 @@ class Controller:
         doc.add_paragraph().add_run('1. Параметры здания').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # self.generate_model_pic(alpha, model_name)
+        self.generate_model_pic(alpha, model_name)
         doc.add_picture(f'Отчет {model_name}_{alpha}\\Модель {model_name}_{alpha}.png')
         counter += 1
         doc.add_paragraph().add_run('2. Статистика по датчиках. Максимумы и огибающие').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # self.generate_envelopes(alpha, model_name)
+        self.generate_envelopes(alpha, model_name)
         envelopes = glob.glob(f'Отчет {model_name}_{alpha}\\Огибающие *.png')
         for env in envelopes:
             doc.add_picture(env)
