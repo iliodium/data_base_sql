@@ -1,4 +1,5 @@
 import os
+import glob
 import uuid
 import random
 import psycopg2
@@ -9,11 +10,13 @@ import matplotlib.cm as cm
 import matplotlib.tri as mtri
 import matplotlib.pyplot as plt
 
+from docx import Document
+from docx.shared import Inches, Pt, Mm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 from psycopg2 import Error
 from celluloid import Camera
 from scipy.fft import fft, rfftfreq
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 class Artist:
@@ -1161,8 +1164,8 @@ class Controller:
         xf = rfftfreq(N, 1 / FD)[1:N // 2]
 
         fig, graph = plt.subplots(1, 2, figsize=(16, 9))
-        if border==-1:
-            border=100000
+        if border == -1:
+            border = 100000
 
         graph[0].plot(xf[:border], yfCx[:border], antialiased=True, label='Cx')
         graph[1].plot(xf[:border], yfCy[:border], antialiased=True, label='Cy')
@@ -1174,83 +1177,383 @@ class Controller:
         plt.clf()
         plt.close()
 
+    def generate_model_pic(self, alpha, model_name):
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        size_x = 2 * (breadth + depth)
+        x, z = self.get_coordinates(alpha, model_name)
+        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
+        count_sensors = len(pr_coeff[0])
+        fig, ax = plt.subplots(figsize=(7, 6), dpi=200, num=1, clear=True)
+        ax.set_title('Channels position', fontweight='semibold', fontsize=8)
+        ax.set_xlabel('Horizontal Direction /m', fontweight='semibold', fontsize=8)
+        ax.set_ylabel('Vertical Direction /m', fontweight='semibold', fontsize=8)
+        fig.text(0.1, 0.005,
+                 f'Model geometrical parameters of a high-rise building: H={height}m, B={breadth}m, D={depth}m, '
+                 f'Model scal=1\\{alpha}00', fontweight='semibold', fontsize=8)
+        ax.set_ylim(0, height)
+        ax.set_xlim(0, size_x)
+        xtick_v = 0.05
+        ytick_v = 0.02 if height in [0.1, 0.2] else 0.05
+        xticks = np.arange(0, size_x + xtick_v, xtick_v)
+        yticks = np.arange(0, height + ytick_v, ytick_v)
+        xlabels = ['0'] + [str(i)[:4].rstrip('0') for i in xticks[1:]]
+        ylabels = ['0'] + [str(i)[:4].rstrip('0') for i in yticks[1:]]
+        ax.set_xticks(xticks, labels=xlabels)
+        ax.set_yticks(yticks, labels=ylabels)
+        for i in range(1, int(size_x * 10)):
+            ax.plot([i / 10, i / 10], [0, height], linestyle='--', color='black')
+        ax.plot(x, z, '+')
+        for i, j, text in zip(x, z, [str(i) for i in range(1, count_sensors + 1)]):
+            ax.text(i, j - 0.01, text, fontsize=8)
+        ax.set_aspect('equal') if height == 0.1 else None
+
+        if not os.path.isdir(f'{os.getcwd()}\\Отчет {model_name}_{alpha}'):
+            os.mkdir(f'{os.getcwd()}\\Отчет {model_name}_{alpha}')
+
+        plt.savefig(f'Отчет {model_name}_{alpha}\\Модель {model_name}_{alpha}.png')
+
+    def generate_envelopes(self, alpha, model_name):
+        if model_name[0] == model_name[1]:
+            border = 50
+        else:
+            border = 95
+
+        for angle in range(0, border, 5):
+            pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+            mean_pr = np.mean(pr_coeff, axis=0).round(4)
+            rms_pr = np.array([np.sqrt(i.dot(i) / i.size) for i in pr_coeff.T]).round(4)
+            std_pr = np.std(pr_coeff, axis=0).round(4)
+            max_pr = np.max(pr_coeff, axis=0).round(4)
+            min_pr = np.min(pr_coeff, axis=0).round(4)
+
+            count_sensors = len(pr_coeff[0])
+            fig, ax = plt.subplots(figsize=(12, 6), dpi=200, num=1, clear=True)
+            ox = [i for i in range(1, count_sensors + 1)]
+            ax.plot(ox, mean_pr, '-', label='MEAN')
+            ax.plot(ox, rms_pr, '-', label='RMS')
+            ax.plot(ox, std_pr, '-', label='STD')
+            ax.plot(ox, max_pr, '-', label='MAX')
+            ax.plot(ox, min_pr, '-', label='MIN')
+
+            xticks = np.arange(0, count_sensors + 20, 20)
+            yticks = np.arange(np.min(min_pr), np.max(max_pr) + 0.2, 0.2).round(2)
+            ax.set_xticks(xticks)
+            ax.set_yticks(yticks)
+            ax.set_xlim(0, count_sensors)п
+            ax.set_ylim(np.min(yticks), np.max(yticks))
+            ax.legend()
+            ax.grid()
+            plt.savefig(f'Отчет {model_name}_{alpha}\\Огибающие {model_name}_{alpha} {angle:02}.png')
+
+    def get_face_number(self, alpha, model_name):
+        if alpha == '4' or alpha == 4:
+            self.cursor.execute("""
+                        select face_number
+                        from experiments_alpha_4
+                        where model_name = (%s)
+                    """, (model_name,))
+
+        elif alpha == '6' or alpha == 6:
+            self.cursor.execute("""
+                        select face_number
+                        from experiments_alpha_6
+                        where model_name = (%s)
+                    """, (model_name,))
+        self.__connection.commit()
+        return self.cursor.fetchall()[0][0]
+
+    def get_info_sensors(self, alpha, model_name):
+        info_sensors = []
+        x, z = self.get_coordinates(alpha, model_name)
+        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
+        face_number = self.get_face_number(alpha, model_name)
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        sensors_on_model = len(pr_coeff[0])
+        x_new, y_new = self.converter_coordinates(x, depth, breadth, face_number, sensors_on_model)
+        mean_pr = np.mean(pr_coeff, axis=0).round(4)
+        rms_pr = np.array([np.sqrt(i.dot(i) / i.size) for i in pr_coeff.T]).round(4)
+        std_pr = np.std(pr_coeff, axis=0).round(4)
+        max_pr = np.max(pr_coeff, axis=0).round(4)
+        min_pr = np.min(pr_coeff, axis=0).round(4)
+
+        for i in range(sensors_on_model):
+            row = [i + 1, x_new[i], y_new[i], z[i], mean_pr[i], rms_pr[i], std_pr[i], max_pr[i], min_pr[i], None, None,
+                   None]
+            info_sensors.append(row)
+        return info_sensors
+
+    def get_sum_coeff(self, alpha, model_name):
+        sum_int_x = []
+        sum_int_y = []
+        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
+        count_sensors_on_model = len(pr_coeff[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        for coeff in pr_coeff:
+
+            coeff = np.reshape(coeff, (count_row, -1))
+            coeff = np.split(coeff, [count_sensors_on_middle,
+                                     count_sensors_on_middle + count_sensors_on_side,
+                                     2 * count_sensors_on_middle + count_sensors_on_side,
+                                     2 * (count_sensors_on_middle + count_sensors_on_side)
+                                     ], axis=1)
+            del coeff[4]
+            faces_x = []
+            faces_y = []
+            for face in range(len(coeff)):
+                if face in [0, 2]:
+                    faces_x.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+                else:
+                    faces_y.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
+
+            sum_int_x.append((faces_x[0] - faces_x[1]))
+            sum_int_y.append((faces_y[0] - faces_y[1]))
+        return sum_int_x, sum_int_y
+
+    def graph_sum_coeff(self, alpha, model_name):
+        info_sum_coeff = []
+        sum_int_x, sum_int_y = self.get_sum_coeff(alpha, model_name)
+        fig, ax = plt.subplots(figsize=(7, 6), dpi=200, num=1, clear=True)
+        ox = list(range(1, 32769))
+        for data, name in zip([sum_int_x, sum_int_y], ["CX", "CY"]):
+            ax.plot(ox, data, label=name)
+            ax.legend()
+            ax.grid()
+            plt.savefig(f'Отчет {model_name}_{alpha}\\{name} {model_name}_{alpha}.png')
+            ax.clear()
+            info_sum_coeff.append([
+                name,
+                np.mean(data).round(2),
+                np.sqrt(np.array(data).dot(np.array(data)) / np.array(data).size).round(2),
+                np.std(data).round(2),
+                np.max(data).round(2),
+                np.min(data).round(2),
+                None,
+                None,
+                None
+            ])
+
+        return info_sum_coeff
+
+    def generate_report(self, alpha, model_name):
+        counter = 0
+        doc = Document()
+        title = doc.add_paragraph().add_run(f'Отчет {model_name}_{alpha}')
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.font.size = Pt(24)
+
+        doc.add_paragraph().add_run('1. Параметры здания').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.generate_model_pic(alpha, model_name)
+        doc.add_picture(f'Отчет {model_name}_{alpha}\\Модель {model_name}_{alpha}.png')
+        counter += 1
+        doc.add_paragraph().add_run('2. Статистика по датчиках. Максимумы и огибающие').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.generate_envelopes(alpha, model_name)
+        envelopes = glob.glob(f'Отчет {model_name}_{alpha}\\Огибающие *.png')
+        for env in envelopes:
+            doc.add_picture(env)
+            counter += 1
+            angle = env[-6:-4]
+            doc.paragraphs[counter].add_run(f'\nОгибающие {model_name}_{alpha} угол {angle}').font.size = Pt(12)
+
+        doc.add_paragraph().add_run('3. Статистика по датчикам в табличном виде ').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.paragraphs[counter].add_run(
+            f'\nТаблица 1. ТПУ {model_name}_{alpha}, RUMB=0 Аэродинамический коэффициент в датчиках').font.size = Pt(12)
+
+        header_1 = (
+            'ДАТЧИК',
+            'X(мм)',
+            'Y(мм)',
+            'Z(мм)',
+            'СРЕДНЕЕ',
+            'RMS',
+            'СТАНДАРТНОЕ ОТКЛОНЕНИЕ',
+            'МАКСИМУМ',
+            'МИНИМУМ',
+            'РАСЧЕТНОЕ',
+            'ОБЕСП+',
+            'ОБЕСП-'
+        )
+
+        table_1 = doc.add_table(rows=1, cols=len(header_1))
+        table_1.style = 'Table Grid'
+        hdr_cells = table_1.rows[0].cells
+        for i in range(len(header_1)):
+            hdr_cells[i].add_paragraph().add_run(header_1[i]).font.size = Pt(8)
+
+        info_sensors = self.get_info_sensors(alpha, model_name)
+
+        for rec in info_sensors:
+            row_cells = table_1.add_row().cells
+            for i in range(len(rec)):
+                row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
+
+        doc.add_paragraph().add_run('4. Суммарные значения аэродинамических коэффициентов').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        info_sum_coeff = self.graph_sum_coeff(alpha, model_name)
+        doc.add_picture(f'Отчет {model_name}_{alpha}\\CX {model_name}_{alpha}.png')
+        counter += 1
+        doc.add_picture(f'Отчет {model_name}_{alpha}\\CY {model_name}_{alpha}.png')
+        counter += 1
+        # doc.add_picture(f'Отчет {model_name}_{alpha}\\CMz {model_name}_{alpha}.png')
+        # counter += 1
+
+        doc.paragraphs[counter].add_run(
+            f'\nТаблица 2. ТПУ {model_name}_{alpha}, RUMB=0 Аэродинамические коэффициенты сил и моментов').font.size = Pt(
+            12)
+
+        header_2 = (
+            'СИЛА',
+            'СРЕДНЕЕ',
+            'RMS',
+            'СТАНДАРТНОЕ ОТКЛОНЕНИЕ',
+            'МАКСИМУМ',
+            'МИНИМУМ',
+            'РАСЧЕТНОЕ',
+            'ОБЕСП+',
+            'ОБЕСП-'
+        )
+        table_2 = doc.add_table(rows=1, cols=len(header_2))
+        table_2.style = 'Table Grid'
+        hdr_cells = table_2.rows[0].cells
+        for i in range(len(header_2)):
+            hdr_cells[i].add_paragraph().add_run(header_2[i]).font.size = Pt(8)
+
+        for rec in info_sum_coeff:
+            row_cells = table_2.add_row().cells
+            for i in range(len(rec)):
+                row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
+
+        doc.add_paragraph().add_run('5. Числа Струхаля суммарных сил').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        header_3 = (
+            'fi',
+            'st(cx)',
+            'st(cy)',
+            'st(cmz)'
+        )
+        table_3 = doc.add_table(rows=1, cols=len(header_3))
+        table_3.style = 'Table Grid'
+        hdr_cells = table_3.rows[0].cells
+        for i in range(len(header_3)):
+            hdr_cells[i].add_paragraph().add_run(header_3[i]).font.size = Pt(8)
+
+        doc.add_paragraph().add_run('6. Числа Струхаля давлений датчиков').font.size = Pt(15)
+        counter += 1
+        doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        header_4 = (
+            'ДАТЧИК',
+            'x',
+            'y',
+            'z',
+            '0',
+            '5',
+            '10',
+            '15',
+            '20',
+            '25',
+            '30',
+            '35',
+            '40',
+            '45'
+        )
+        table_4 = doc.add_table(rows=1, cols=len(header_4))
+        table_4.style = 'Table Grid'
+        hdr_cells = table_4.rows[0].cells
+        for i in range(len(header_4)):
+            hdr_cells[i].add_paragraph().add_run(header_4[i]).font.size = Pt(8)
+
+        doc.save(f'Отчет {model_name}_{alpha}\\Отчет {model_name}_{alpha}.docx')
+
 
 if __name__ == '__main__':
     control = Controller()
     # пароль 08101430
     control.connect(database='tpu', password='2325070307')
-    while True:
-        command = input("""
-        1
-            - изополя
-            - спектры
-            - средние
-                - графики
-                - значения
-            - стандартное откл
-        2
-            - изополя
-        3
-            - графики средних
-            - значения средних
-            - стандартное откл
-        4
-            - спектры средних
 
-        1 например:
-        1 114 6 30 700
-        режим, параметр BDH, альфа, угол, до какого значения обрезать спектры
-        
-        2 например
-        2 113 4 0 std
-        если нужно конкретное изополе ввести режим:
-            - min
-            - max
-            - mean
-            - std
-        если нужны все, то all
-        2 113 4 0 all
-        
-        3 например
-        3 111 4 0
-        
-        4 например
-        4 115 4 0 157
-        чтобы отобразить весь спектр последний параметр должен быть -1
-        """)
+    control.generate_report('4', '111')
 
-        command = command.split()
-
-        try:
-            global folder_out
-            folder_out = f'режим {" ".join(map(str, command))}'
-            os.mkdir(folder_out)
-
-        except:
-            print('Уже существует')
-            break
-        model_name = command[1]
-        alpha = command[2]
-        angle = command[3]
-        match command[0]:
-
-            case '1':
-                for mode in ('max', 'mean', 'min', 'std'):
-                    control.graphs(mode, alpha, model_name, angle)
-                control.graphic_mean(alpha, model_name, angle)
-                border = int(command[-1])
-                control.spectr_mean(alpha, model_name, angle, border)
-            case '2':
-                if command[-1] == 'all':
-                    for mode in ('max', 'mean', 'min', 'std'):
-                        control.graphs(mode, alpha, model_name, angle)
-                else:
-                    control.graphs(command[-1], alpha, model_name, angle)
-            case '3':
-                control.graphic_mean(alpha, model_name, angle)
-            case '4':
-                border = int(command[-1])
-                control.spectr_mean(alpha, model_name, angle, border)
-
-        break
     control.disconnect()
+
+    # while True:
+    #     command = input("""
+    #     1
+    #         - изополя
+    #         - спектры
+    #         - средние
+    #             - графики
+    #             - значения
+    #         - стандартное откл
+    #     2
+    #         - изополя
+    #     3
+    #         - графики средних
+    #         - значения средних
+    #         - стандартное откл
+    #     4
+    #         - спектры средних
+    #
+    #     1 например:
+    #     1 114 6 30 700
+    #     режим, параметр BDH, альфа, угол, до какого значения обрезать спектры
+    #
+    #     2 например
+    #     2 113 4 0 std
+    #     если нужно конкретное изополе ввести режим:
+    #         - min
+    #         - max
+    #         - mean
+    #         - std
+    #     если нужны все, то all
+    #     2 113 4 0 all
+    #
+    #     3 например
+    #     3 111 4 0
+    #
+    #     4 например
+    #     4 115 4 0 157
+    #     чтобы отобразить весь спектр последний параметр должен быть -1
+    #     """)
+    #
+    #     command = command.split()
+    #
+    #     try:
+    #         global folder_out
+    #         folder_out = f'режим {" ".join(map(str, command))}'
+    #         os.mkdir(folder_out)
+    #
+    #     except:
+    #         print('Уже существует')
+    #         break
+    #     model_name = command[1]
+    # alpha = command[2]
+    # angle = command[3]
+    # match command[0]:
+    #
+    #     case '1':
+    #         for mode in ('max', 'mean', 'min', 'std'):
+    #             control.graphs(mode, alpha, model_name, angle)
+    #         control.graphic_mean(alpha, model_name, angle)
+    #         border = int(command[-1])
+    #         control.spectr_mean(alpha, model_name, angle, border)
+    #     case '2':
+    #         if command[-1] == 'all':
+    #             for mode in ('max', 'mean', 'min', 'std'):
+    #                 control.graphs(mode, alpha, model_name, angle)
+    #         else:
+    #             control.graphs(command[-1], alpha, model_name, angle)
+    #     case '3':
+    #         control.graphic_mean(alpha, model_name, angle)
+    #     case '4':
+    #         border = int(command[-1])
+    #         control.spectr_mean(alpha, model_name, angle, border)
+    #
+    # break
