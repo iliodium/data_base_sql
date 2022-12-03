@@ -1,0 +1,17 @@
+
+dpython:S1192°"KDefine a constant instead of duplicating this literal 'Table Grid' 4 times.(šÒŒ‰
+Hpython:S1481Y"+Remove the unused local variable "ret_int".(ŠŠÆ´úÿÿÿÿ
+qpython:S37763"TRefactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.(Àé•æûÿÿÿÿ
+7python:S125ä"Remove this commented out code.(“„Ñ™
+<python:S125»"Remove this commented out code.(«…¤Øùÿÿÿÿ
+Cpython:S1481 "%Remove the unused local variable "i".(ñð‹®úÿÿÿÿ
+|python:S116Ï"dRename this field "__extrapolatedAnglesInfoList" to match the regular expression ^[_a-z][_a-z0-9]*$.(ÿ¨äÄ
+Upython:S5754ß"<Specify an exception class to catch or reraise the exception(ˆÊÉ·
+mpython:S117ˆ	"URename this local variable "yfCx" to match the regular expression ^[_a-z][a-z0-9_]*$.(Á“‹«
+lpython:S117‰	"URename this local variable "yfCy" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÎÊ£
+mpython:S117é
+"URename this local variable "yfCx" to match the regular expression ^[_a-z][a-z0-9_]*$.(Á“‹«
+lpython:S117ê
+"URename this local variable "yfCy" to match the regular expression ^[_a-z][a-z0-9_]*$.(ÎÊ£
+<python:S125Ä"Remove this commented out code.(Èƒ©ëÿÿÿÿÿ
+6python:S125Ÿ"Remove this commented out code.(¿þþs
