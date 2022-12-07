@@ -835,6 +835,7 @@ class Controller:
             'rev': 90 * (angle // 90 + 1) - angle,
             'for': angle % 90
         }
+
         # определение параметров для перестановки данных
         type_view = {
             True: {
@@ -1262,6 +1263,23 @@ class Controller:
         self.__connection.commit()
         return self.cursor.fetchall()[0][0]
 
+    def get_uh_average_wind_speed(self, alpha, model_name):
+        if alpha == '4' or alpha == 4:
+            self.cursor.execute("""
+                        select uh_averagewindspeed
+                        from experiments_alpha_4
+                        where model_name = (%s)
+                    """, (model_name,))
+
+        elif alpha == '6' or alpha == 6:
+            self.cursor.execute("""
+                        select uh_averagewindspeed
+                        from experiments_alpha_6
+                        where model_name = (%s)
+                    """, (model_name,))
+        self.__connection.commit()
+        return self.cursor.fetchall()[0][0]
+
     def get_info_sensors(self, alpha, model_name):
         info_sensors = []
         x, z = self.get_coordinates(alpha, model_name)
@@ -1293,10 +1311,10 @@ class Controller:
             info_sensors.append(row)
         return info_sensors
 
-    def get_sum_coeff(self, alpha, model_name):
+    def get_sum_coeff(self, alpha, model_name, angle = 0):
         sum_int_x = []
         sum_int_y = []
-        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
+        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
         count_sensors_on_model = len(pr_coeff[0])
         count_sensors_on_middle = int(model_name[0]) * 5
         count_sensors_on_side = int(model_name[1]) * 5
@@ -1322,12 +1340,66 @@ class Controller:
             sum_int_y.append((faces_y[0] - faces_y[1]))
         return sum_int_x, sum_int_y
 
-    def graph_sum_coeff(self, alpha, model_name):
+    def get_sum_cmz(self, alpha, model_name, angle = 0):
+        sum_cmz = []
+        pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, angle)) / 1000
+        breadth, depth, height = int(model_name[0]) / 10, int(model_name[1]) / 10, int(model_name[2]) / 10
+        v2 = breadth
+        v3 = breadth + depth
+        v4 = 2 * breadth + depth
+        mid13_x = breadth / 2
+        mid24_x = depth / 2
+        count_sensors_on_model = len(pr_coeff[0])
+        count_sensors_on_middle = int(model_name[0]) * 5
+        count_sensors_on_side = int(model_name[1]) * 5
+        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
+        x, z = self.get_coordinates(alpha, model_name)
+
+        x = np.reshape(x, (count_row, -1))
+        x = np.split(x, [count_sensors_on_middle,
+                         count_sensors_on_middle + count_sensors_on_side,
+                         2 * count_sensors_on_middle + count_sensors_on_side,
+                         2 * (count_sensors_on_middle + count_sensors_on_side)
+                         ], axis=1)
+
+        del x[4]
+        x[1] -= v2
+        x[2] -= v3
+        x[3] -= v4
+        mx = np.array([
+            abs(x[0] - mid13_x),
+            abs(x[1] - mid24_x),
+            abs(x[2] - mid13_x),
+            abs(x[3] - mid24_x),
+        ])
+        coeffs_norm_13 = [1 if i <= count_sensors_on_middle // 2 else -1 for i in range(count_sensors_on_middle)]
+        coeffs_norm_24 = [1 if i <= count_sensors_on_side // 2 else -1 for i in range(count_sensors_on_side)]
+        for coeff in pr_coeff:
+
+            coeff = np.reshape(coeff, (count_row, -1))
+            coeff = np.split(coeff, [count_sensors_on_middle,
+                                     count_sensors_on_middle + count_sensors_on_side,
+                                     2 * count_sensors_on_middle + count_sensors_on_side,
+                                     2 * (count_sensors_on_middle + count_sensors_on_side)
+                                     ], axis=1)
+            del coeff[4]
+            for i in range(4):
+                if i in [0, 2]:
+                    coeff[i] *= coeffs_norm_13
+                else:
+                    coeff[i] *= coeffs_norm_24
+            cmz = mx * coeff
+            sum_cmz.append(np.sum(cmz))
+
+        return sum_cmz
+
+    def graph_sum_coeff(self, alpha, model_name, angle = 0):
         info_sum_coeff = []
-        sum_int_x, sum_int_y = self.get_sum_coeff(alpha, model_name)
+        sum_int_x, sum_int_y = self.get_sum_coeff(alpha, model_name, angle)
+        sum_cmz = self.get_sum_cmz(alpha, model_name, angle)
         fig, ax = plt.subplots(figsize=(7, 6), dpi=200, num=1, clear=True)
         ox = np.linspace(0, 32.768, 32768)
-        for data, name in zip([sum_int_x, sum_int_y], ["CX", "CY"]):
+        for data, name in zip((sum_int_x, sum_int_y, sum_cmz), ("CX", "CY", "CMz")):
             ax.plot(ox, data, label=name)
             ax.legend()
             ax.grid()
@@ -1352,38 +1424,14 @@ class Controller:
 
         return info_sum_coeff
 
-    def spectr_sum_report(self, alpha, model_name):
-        pr_norm = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
-        count_sensors_on_model = len(pr_norm[0])
-        count_sensors_on_middle = int(model_name[0]) * 5
-        count_sensors_on_side = int(model_name[1]) * 5
-        count_row = count_sensors_on_model // (2 * (count_sensors_on_middle + count_sensors_on_side))
-
-        sum_int_x = []
-        sum_int_y = []
-
-        for coeff in pr_norm:
-            coeff = np.reshape(coeff, (count_row, -1))
-            coeff = np.split(coeff, [count_sensors_on_middle,
-                                     count_sensors_on_middle + count_sensors_on_side,
-                                     2 * count_sensors_on_middle + count_sensors_on_side,
-                                     2 * (count_sensors_on_middle + count_sensors_on_side)
-                                     ], axis=1)
-            del coeff[4]
-            faces_x = []
-            faces_y = []
-            for face in range(len(coeff)):
-                if face in [0, 2]:
-                    faces_x.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
-                else:
-                    faces_y.append(np.sum(coeff[face]) / (count_sensors_on_model / 4))
-
-            sum_int_x.append((faces_x[0] - faces_x[1]))
-            sum_int_y.append((faces_y[0] - faces_y[1]))
+    def spectr_sum_report(self, alpha, model_name, angle = 0):
+        sum_int_x, sum_int_y = self.get_sum_coeff(alpha, model_name, angle)
+        sum_cmz = self.get_sum_cmz(alpha, model_name, angle)
         N = len(sum_int_x)
 
         yfCx = (1 / N) * (np.abs(fft(sum_int_x)))[1:N // 2]
         yfCy = (1 / N) * (np.abs(fft(sum_int_y)))[1:N // 2]
+        yfCMz = (1 / N) * (np.abs(fft(sum_cmz)))[1:N // 2]
 
         FD = 1000
         xf = rfftfreq(N, 1 / FD)[1:N // 2]
@@ -1393,7 +1441,7 @@ class Controller:
 
         fig, ax = plt.subplots(figsize=(12, 6), dpi=200, num=1, clear=True)
 
-        for data, name in zip([yfCx, yfCy], ['Cx', 'Cy']):
+        for data, name in zip([yfCx, yfCy, yfCMz], ['Cx', 'Cy', 'CMz']):
             ax.plot(xf[:border], data[:border], antialiased=True, label=name)
             peaks = np.sort(data[:border])[::-1][:count_peaks]
 
@@ -1407,19 +1455,108 @@ class Controller:
             plt.savefig(f'Отчет {model_name}_{alpha}\\Спектр {name} {model_name}_{alpha}.png')
             ax.clear()
 
+    def spect_sum_st(self, alpha, model_name, angle, parameters):
+        labels = parameters['labels']
+        data_sum = parameters['data']
+        data_spectr = []
+        fi_st = []
+        N = len(data_sum[0])
+        for i in data_sum:
+            data_spectr.append((1 / N) * (np.abs(fft(i)))[1:N // 2])
+
+        FD = 1000
+        xf = rfftfreq(N, 1 / FD)[1:N // 2]
+
+        border = 500
+        count_peaks = 1
+
+        fig, ax = plt.subplots(figsize=(12, 6), dpi=200, num=1, clear=True)
+
+        for data, name in zip(data_spectr, labels):
+            ax.plot(xf[:border], data[:border], antialiased=True, label=name)
+            peaks = np.sort(data[:border])[::-1][:count_peaks]
+
+            for peak in range(count_peaks):
+                x = xf[:border][np.where(data[:border] == peaks[peak])].round(3)[0]
+                y = peaks[peak]
+                ax.annotate(x, xy=(x, y))
+                fi_st.append(x)
+
+        ax.legend()
+        ax.grid()
+        plt.savefig(f'Отчет {model_name}_{alpha}\\Спектр суммарных сил {model_name}_{alpha}_{angle}.png')
+        return fi_st
+
+    def get_info_sum_coeff_st(self, alpha, model_name):
+        info_sum_coeff_st = []
+        speed = self.get_uh_average_wind_speed(alpha, model_name)
+        size = float(model_name[0]) / 10
+        for angle in range(0, 50, 5):
+            sum_x, sum_y = self.get_sum_coeff(alpha, model_name, angle=angle)
+            sum_cmz = self.get_sum_cmz(alpha, model_name, angle=angle)
+            fi_st = self.spect_sum_st(alpha, model_name, angle, {'labels': ('Cx', 'CY', 'CMz'),
+                                                                 'data': (sum_x, sum_y, sum_cmz)})
+            fi_st = (np.array(fi_st) * size / speed).round(4).tolist()
+            info_sum_coeff_st.append([angle, *fi_st])
+        return info_sum_coeff_st
+
+    def get_st(self, alpha, model_name, count_sensors):
+        fi = []
+        speed = self.get_uh_average_wind_speed(alpha, model_name)
+        size = float(model_name[0]) / 10
+        N = 32768
+        FD = 1000
+        border = 500
+        count_peaks = 1
+        for angle in range(0, 50, 5):
+            filist = []
+
+            pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, angle)).T / 1000
+
+            fig, ax = plt.subplots(figsize=(12, 6), dpi=200, num=1, clear=True)
+            for i in range(count_sensors):
+
+                yf = (1 / N) * (np.abs(fft(pr_coeff[i])))[1:N // 2]
+                xf = rfftfreq(N, 1 / FD)[1:N // 2]
+                ax.plot(xf[:border], yf[:border], antialiased=True, label=i + 1)
+
+                peaks = np.sort(yf[:border])[::-1][:count_peaks]
+
+                for peak in range(count_peaks):
+                    x = xf[:border][np.where(yf[:border] == peaks[peak])].round(3)[0]
+                    filist.append(x)
+            fi.append((np.array(filist) * size / speed).round(4))
+            # ax.legend()
+            ax.grid()
+            plt.savefig(f'Отчет {model_name}_{alpha}\\числа Струхаля для датчиков {model_name}_{alpha}_{angle}.png')
+        return np.array(fi).T
+
+    def get_info_sens_st(self, alpha, model_name):
+        breadth, depth = int(model_name[0]) / 10, int(model_name[1]) / 10
+        info_sens_st = []
+        x, z = self.get_coordinates(alpha, model_name)
+        face_number = self.get_face_number(alpha, model_name)
+        x, y = self.converter_coordinates(x, depth, breadth, face_number, len(face_number))
+        st = self.get_st(alpha, model_name, len(face_number))
+        for i in range(len(face_number)):
+            info_sens_st.append([i + 1, x[i], y[i], z[i], *st[i]])
+        return info_sens_st
+
     def generate_report(self, alpha, model_name):
         counter = 0
+        counter_plots = 0
         doc = Document()
         title = doc.add_paragraph().add_run(f'Отчет {model_name}_{alpha}')
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
         title.font.size = Pt(24)
-
+        ####################### 1. Параметры здания #######################
         doc.add_paragraph().add_run('1. Параметры здания').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
         self.generate_model_pic(alpha, model_name)
         doc.add_picture(f'Отчет {model_name}_{alpha}\\Модель {model_name}_{alpha}.png')
         counter += 1
+        ####################### 2. Статистика по датчиках. Максимумы и огибающие #######################
         doc.add_paragraph().add_run('2. Статистика по датчиках. Максимумы и огибающие').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1430,7 +1567,8 @@ class Controller:
             counter += 1
             angle = env[-6:-4]
             doc.paragraphs[counter].add_run(f'\nОгибающие {model_name}_{alpha} угол {angle}').font.size = Pt(12)
-
+            counter_plots += 1
+        ####################### 3. Статистика по датчикам в табличном виде #######################
         doc.add_paragraph().add_run('3. Статистика по датчикам в табличном виде ').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1464,21 +1602,19 @@ class Controller:
             row_cells = table_1.add_row().cells
             for i in range(len(rec)):
                 row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
-
+        ####################### 4. Суммарные значения аэродинамических коэффициентов #######################
         doc.add_paragraph().add_run('4. Суммарные значения аэродинамических коэффициентов').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
         info_sum_coeff = self.graph_sum_coeff(alpha, model_name)
-        doc.add_picture(f'Отчет {model_name}_{alpha}\\CX {model_name}_{alpha}.png')
-        counter += 1
-        doc.add_picture(f'Отчет {model_name}_{alpha}\\CY {model_name}_{alpha}.png')
-        counter += 1
-        # doc.add_picture(f'Отчет {model_name}_{alpha}\\CMz {model_name}_{alpha}.png')
-        # counter += 1
+        for name_sum in ('CX', 'CY', 'CMz'):
+            doc.add_picture(f'Отчет {model_name}_{alpha}\\{name_sum} {model_name}_{alpha}.png')
+            counter += 1
+            counter_plots += 1
 
         doc.paragraphs[counter].add_run(
-            f'\nТаблица 2. ТПУ {model_name}_{alpha}, RUMB=0 Аэродинамические коэффициенты сил и моментов').font.size = Pt(
-            12)
+            f'''\nТаблица 2. ТПУ {model_name}_{alpha}, 
+                RUMB=0 Аэродинамические коэффициенты сил и моментов''').font.size = Pt(12)
 
         header_2 = (
             'СИЛА',
@@ -1501,22 +1637,32 @@ class Controller:
             row_cells = table_2.add_row().cells
             for i in range(len(rec)):
                 row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
-
+        ####################### 5. Числа Струхаля суммарных сил #######################
         doc.add_paragraph().add_run('5. Числа Струхаля суммарных сил').font.size = Pt(15)
         counter += 1
+        info_sum_coeff_st = self.get_info_sum_coeff_st(alpha, model_name)
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
         header_3 = (
             'fi',
-            'st(cx)',
-            'st(cy)',
-            'st(cmz)'
+            'St(CX)',
+            'St(CY)',
+            'St(CMz)'
         )
         table_3 = doc.add_table(rows=1, cols=len(header_3))
         table_3.style = 'Table Grid'
         hdr_cells = table_3.rows[0].cells
         for i in range(len(header_3)):
             hdr_cells[i].add_paragraph().add_run(header_3[i]).font.size = Pt(8)
-
+        for rec in info_sum_coeff_st:
+            row_cells = table_3.add_row().cells
+            for i in range(len(rec)):
+                row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
+        for angle in range(0, 50, 5):
+            doc.add_picture(f'Отчет {model_name}_{alpha}\\Спектр суммарных сил {model_name}_{alpha}_{angle}.png')
+            counter += 1
+            doc.paragraphs[counter].add_run(f'\nРисунок {counter_plots}. Угол {angle}.').font.size = Pt(12)
+            counter_plots += 1
+        ####################### 6. Числа Струхаля давлений датчиков #######################
         doc.add_paragraph().add_run('6. Числа Струхаля давлений датчиков').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1542,12 +1688,24 @@ class Controller:
         for i in range(len(header_4)):
             hdr_cells[i].add_paragraph().add_run(header_4[i]).font.size = Pt(8)
 
-        self.spectr_sum_report(alpha, model_name)
+        info_sens_st = self.get_info_sens_st(alpha, model_name)
+        for angle in range(0, 50, 5):
+            doc.add_picture(f'Отчет {model_name}_{alpha}\\числа Струхаля для датчиков {model_name}_{alpha}_{angle}.png')
+            counter += 1
+            doc.paragraphs[counter].add_run(
+                f'\nРисунок {counter_plots}. Угол {angle} числа Струхаля для датчиков').font.size = Pt(12)
+            counter_plots += 1
+        for rec in info_sens_st:
+            row_cells = table_4.add_row().cells
+            for i in range(len(rec)):
+                row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(8)
 
+        ####################### 7. Спектры #######################
+        self.spectr_sum_report(alpha, model_name)
         doc.add_paragraph().add_run('7. Спектры').font.size = Pt(15)
         counter += 1
         doc.paragraphs[counter].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for name in ('Cx', 'Cy'):
+        for name in ('Cx', 'Cy', 'CMz'):
             doc.add_picture(f'Отчет {model_name}_{alpha}\\Спектр {name} {model_name}_{alpha}.png')
             counter += 1
             doc.paragraphs[counter].add_run(f'\nСпектр {name} {model_name}_{alpha}').font.size = Pt(12)
@@ -1561,7 +1719,7 @@ if __name__ == '__main__':
     control.connect(database='tpu', password='2325070307')
 
     control.generate_report('4', '111')
-
+    # control.get_info_sens_st('4', '111')
     control.disconnect()
 
     # while True:
