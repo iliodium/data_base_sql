@@ -1483,11 +1483,10 @@ class Controller:
                 i.remove()
             legend.remove()
 
-    def spect_sum_st(self, alpha, model_name, angle, parameters):
+    def spect_sum(self, alpha, model_name, angle, parameters):
         labels = parameters['labels']
         data_sum = parameters['data']
         data_spectr = []
-        fi_st = []
         N = len(data_sum[0])
         for i in data_sum:
             data_spectr.append((1 / N) * (np.abs(fft(i)))[1:N // 2])
@@ -1503,29 +1502,19 @@ class Controller:
         for data, name in zip(data_spectr, labels):
             ax.plot(xf[:border], data[:border], antialiased=True, label=name)
             peaks = np.sort(data[:border])[::-1]
-
             x = xf[:border][np.where(data[:border] == peaks[0])].round(3)[0]
             y = peaks[0]
             ax.annotate(x, xy=(x, y))
-            fi_st.append(x)
-
         ax.legend()
         ax.grid()
         plt.savefig(
             f'Отчет {model_name}_{alpha}\\Спектры суммарных сил\\Спектр суммарных сил {model_name}_{alpha}_{angle}.png',
             bbox_inches='tight')
-        return fi_st
 
-    def get_info_sum_coeff_st(self, alpha, model_name, sum_cx, sum_cy, sum_cmz):
-        info_sum_coeff_st = []
-        speed = self.get_uh_average_wind_speed(alpha, model_name)
-        size = float(model_name[0]) / 10
+    def generate_spectr_sum_pres(self, alpha, model_name, sum_cx, sum_cy, sum_cmz):
         for i in range(len(sum_cx)):
-            fi_st = self.spect_sum_st(alpha, model_name, i * 5, {'labels': ('Cx', 'CY', 'CMz'),
+            self.spect_sum(alpha, model_name, i * 5, {'labels': ('Cx', 'CY', 'CMz'),
                                                                  'data': (sum_cx[i], sum_cy[i], sum_cmz[i])})
-            fi_st = (np.array(fi_st) * size / speed).round(6).tolist()
-            info_sum_coeff_st.append([i * 5, *fi_st])
-        return info_sum_coeff_st
 
     def get_st(self, alpha, model_name, count_sensors):
         fi = []
@@ -1632,7 +1621,7 @@ class Controller:
             Controller.polar_plot(alpha, model_name, mode, cx, cy, cmz)
 
     def generate_welch_graphs(self, alpha, model_name, sum_cx, sum_cy, sum_cmz):
-
+        numSt = []
         speed = self.get_uh_average_wind_speed(alpha, model_name)
         size = float(model_name[0]) / 10
         fig, ax = plt.subplots(figsize=(9, 5), dpi=200, num=1, clear=True)
@@ -1641,16 +1630,19 @@ class Controller:
         ax.set_xlabel('Sh')
         ax.set_ylabel('PSD, V**2/Hz')
         for i in range(len(sum_cx)):
+            iterSt = [i*5]
             plots = []
             annotates = []
             for data, name in zip((sum_cx[i], sum_cy[i], sum_cmz[i]), ('Cx', 'Cy', 'CMz')):
-                temp, psd = welch(data, fs=1000, nperseg=256)
+                temp, psd = welch(data, fs=1000, nperseg=int(32768/5))
                 plots.append(ax.plot(temp, psd, label=name))
                 peak = np.max(psd)
                 x = temp[np.where(psd == peak)]
                 y = peak
-                annotates.append(ax.annotate(np.array(x * size / speed).round(3)[0], xy=(x, y)))
-            ax.set_xticks(temp, labels=[np.array(i * size / speed).round(3) for i in temp], fontsize=7)
+                annotates.append(ax.annotate(np.array(x * size / speed).round(4)[0], xy=(x, y)))
+                iterSt.append(np.array(x * size / speed).round(4)[0])
+            numSt.append(iterSt)
+            ax.set_xticks(temp, labels=[np.array(i * size / speed).round(4) for i in temp], fontsize=7)
             ax.set_xlim([0, 15])
 
             legend = ax.legend(loc='upper right', fontsize=9)
@@ -1663,6 +1655,7 @@ class Controller:
             for i in annotates:
                 i.remove()
             legend.remove()
+        return numSt
 
     def generate_folder_report(self, alpha, model_name):
         if not os.path.isdir(f'{os.getcwd()}\\Отчет {model_name}_{alpha}'):
@@ -1701,13 +1694,13 @@ class Controller:
         print('3\\7')
         self.generate_isofields(alpha, model_name)
         print('4\\7')
-        self.generate_welch_graphs(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
+        numSt = self.generate_welch_graphs(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
         print('5\\7')
         self.spectr_sum_report(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
         print('6\\7')
         info_sensors = self.get_info_sensors(alpha, model_name)
         info_sum_coeff = self.graph_sum_coeff(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
-        #info_sum_coeff_st = self.get_info_sum_coeff_st(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
+        self.generate_spectr_sum_pres(alpha, model_name, sum_x_list, sum_y_list, sum_cmz_list)
         print('7\\7')
         print("Формирование отчета")
 
@@ -1902,18 +1895,18 @@ class Controller:
                 f'Рисунок {counter_plots}. Спектральная плотность мощности для здания {breadth}x{depth}x{height} при угле {angle:02}º')
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
             counter_plots += 1
-        # table_st = doc.add_table(rows=1, cols=len(header_st))
-        # table_st.style = 'Table Grid'
-        # hdr_cells = table_st.rows[0].cells
-        # for i in range(len(header_st)):
-        #     hdr_cells[i].add_paragraph().add_run(header_st[i]).font.size = Pt(8)
-        # for rec in info_sum_coeff_st:
-        #     row_cells = table_st.add_row().cells
-        #     for i in range(len(rec)):
-        #         row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(12)
-        # doc.add_paragraph().add_run(
-        #     f'Таблица {counter_tables}. Числа Струхаля для здания {breadth}x{depth}x{height}')
-        # counter_tables += 1
+        table_st = doc.add_table(rows=1, cols=len(header_st))
+        table_st.style = 'Table Grid'
+        hdr_cells = table_st.rows[0].cells
+        for i in range(len(header_st)):
+            hdr_cells[i].add_paragraph().add_run(header_st[i]).font.size = Pt(8)
+        for rec in numSt:
+            row_cells = table_st.add_row().cells
+            for i in range(len(rec)):
+                row_cells[i].add_paragraph().add_run(str(rec[i])).font.size = Pt(12)
+        doc.add_paragraph().add_run(
+            f'Таблица {counter_tables}. Числа Струхаля для здания {breadth}x{depth}x{height}')
+        counter_tables += 1
         print('7\\7')
         doc.save(f'Отчет {model_name}_{alpha}\\Отчет по зданию {breadth}x{depth}x{height}.docx')
 
@@ -1923,6 +1916,5 @@ if __name__ == '__main__':
     # пароль 08101430
     control.connect(database='tpu', password='2325070307')
 
-    control.generate_report('6', '115')
+    control.generate_report('6', '111')
     control.disconnect()
-1 17
