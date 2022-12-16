@@ -1332,9 +1332,9 @@ class Controller:
         pr_coeff = np.array(self.get_pressure_coefficients(alpha, model_name, 0)) / 1000
         count_sensors = len(pr_coeff[0])
         fig, ax = plt.subplots(figsize=(6.49, 5), dpi=200, num=1, clear=True)
-        ax.set_title('Позиция датчиков', fontweight='semibold', fontsize=8)
-        ax.set_xlabel('Горизонталь /м', fontweight='semibold', fontsize=8)
-        ax.set_ylabel('Вертикаль /м', fontweight='semibold', fontsize=8)
+        ax.set_title('Развертка датчиков по модели', fontweight='semibold', fontsize=8)
+        ax.set_xlabel('Горизонтальная развертка /м', fontweight='semibold', fontsize=8)
+        ax.set_ylabel('Высота модели /м', fontweight='semibold', fontsize=8)
         ax.set_ylim(0, height)
         ax.set_xlim(0, size_x)
         xtick_s = 0.05
